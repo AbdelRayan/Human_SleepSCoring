@@ -10,6 +10,8 @@ dependencies:
   - tk>=8.6.10
   - wheel>=0.37.0
   - numpy==1.26.4
-  - tables==3.8
   - tensorflow==2.11.1
-  - tfa-nightly==0.23.0.dev20240415222534
+  - pip
+  - pip:
+      - tfa-nightly
+      - tables==3.8
