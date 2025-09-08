@@ -17,74 +17,70 @@ file.set_channel_types({
     'Temp rectal': 'misc',
     'Event marker': 'stim'
 })
-
-file.pick_types(eeg=True)
-# Create epochs (30s windows)
-epochs = mne.make_fixed_length_epochs(file, duration=30, preload=True)
-
-# Compute average across epochs
-evoked = epochs.average()
-
-power = tfr_multitaper(epochs, freqs=np.arange(1, 40, 2),
-                       n_cycles=2, return_itc=False)
-
-# Plot power over time for a single channel
-power.plot(picks='EEG Fpz-Cz', baseline=(None, 0), mode='logratio')
-
-# Topographic plot at specific frequency
-power.plot_topomap(fmin=12, fmax=15, tmin=0, tmax=2, ch_type='eeg')
-# scalings = {
-#     'eeg': 1e-4,
-#     'eog': 1e-4,
-#     'emg': 1e-3,
-#     'misc': 0.5,
-#     'stim': 100
-# }
-#
-
-# file.plot(duration=10, scalings=scalings, show_scrollbars=True)
-
-# annotations = file.annotations
-#
-# stage_mapping = {
-#     "Sleep stage W": 0,
-#     "Sleep stage 1": 1,
-#     "Sleep stage 2": 2,
-#     "Sleep stage 3": 3,
-#     "Sleep stage 4": 3,
-#     "Sleep stage R": 4,
-#     "Sleep stage ?": 5
-# }
-#
-# onsets = annotations.onset
-# durations = annotations.duration
-# stages = [stage_mapping[d] for d in annotations.description]
-#
-# sfreq = file.info['sfreq']
-# end_time = file.times[-1]
-# times = np.arange(0, end_time, 1/sfreq)
-#
-# stage_vector = np.zeros_like(times)
-#
-# for onset, duration, stage in zip(onsets, durations, stages):
-#     idx = np.where((times >= onset) & (times < onset + duration))
-#     stage_vector[idx] = stage
+mapping = {
+    'EEG Fpz-Cz': 'Fpz-Cz',
+    'EEG Pz-Oz': 'Pz-Oz',
+    'EOG horizontal': 'EOG',
+    'Resp oro-nasal': 'Nasal',
+    'EMG submental': 'EMG',
+    'Temp rectal': 'Rectal',
+    'Event marker': 'Marker'
+}
 
 
-# plt.figure(figsize=(15, 3))
-# plt.plot(times, stage_vector, drawstyle='steps-post')
-# plt.yticks([0,1,2,3,4], ["W","N1","N2","N3","R"])
-# plt.xlabel("Time (seconds)")
-# plt.ylabel("Sleep Stage")
-# plt.title("Hypnogram")
-# plt.show()
+file.rename_channels(mapping)
+file.pick_types(eeg=True, eog=True)
 
-# channels = mne.pick_types(file.info, eeg=True, eog=True)
+scalings = {
+    'eeg': 1e-4,
+    'eog': 1e-4,
+    'emg': 1e-3,
+    'misc': 0.5,
+    'stim': 100
+}
 
-file.plot(
-    duration=30,
-    show=True,
-    block=True
+
+
+file.plot(duration=300, scalings=scalings, show_scrollbars=True, block=True)
+
+annotations = file.annotations
+
+stage_mapping = {
+    "Sleep stage W": 0,
+    "Sleep stage R": 1,
+    "Sleep stage 1": 2,
+    "Sleep stage 2": 3,
+    "Sleep stage 3": 4,
+    "Sleep stage 4": 4,
+    "Sleep stage ?": -1
+}
+
+onsets = annotations.onset
+durations = annotations.duration
+stages = [stage_mapping[d] for d in annotations.description]
+
+sfreq = file.info['sfreq']
+end_time = file.times[-1]
+times = np.arange(0, end_time, 1/sfreq)
+
+stage_vector = np.zeros_like(times)
+
+for onset, duration, stage in zip(onsets, durations, stages):
+    if stage == -1:
+        continue
+    idx = np.where((times >= onset) & (times < onset + duration))
+    stage_vector[idx] = stage
+
+plt.figure(figsize=(15, 3))
+plt.plot(times, stage_vector, drawstyle='steps-post')
+
+plt.yticks(
+    [0, 1, 2, 3, 4],
+    ["Wake", "REM", "N1", "N2", "N3"]
 )
 
-
+plt.gca().invert_yaxis()
+plt.xlabel("Time (seconds)")
+plt.ylabel("Sleep Stage")
+plt.title("Hypnogram")
+plt.show()
