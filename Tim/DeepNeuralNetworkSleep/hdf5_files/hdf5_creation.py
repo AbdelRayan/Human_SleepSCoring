@@ -145,7 +145,7 @@ def prepare_for_hdf5(recording, fs, files_path, epoch_length):
       pfc = i
     if 'states' in i:
       states = i
-  recording_name = hpc[:-4]     # Group name 
+  recording_name = hpc[:-4]# Group name
   path_to_hpc = files_path + "/" + hpc
   # Prepare data (Load + artefact removal)
   hpc_data = loadmat(path_to_hpc)
@@ -204,7 +204,7 @@ def update_hdf5(a, path_to_hdf5):
   with h5py.File(path_to_hdf5, 'a')  as database:
   # Create group and 2 datasets
     print(path_to_hdf5)
-    print(group_name)
+    # print(group_name)
     group = database.create_group(a[2])
     group.attrs['Description features'] = '[index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed]'
     group.attrs['Description Mapped_scores'] = '[0: Artefact, 1: Wake, 3: NREM, 4: Intermediate, 5: REM]'

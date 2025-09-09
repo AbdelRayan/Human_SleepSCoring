@@ -474,3 +474,18 @@ def posttrial_OS_RGS_CBD(file_path, rat_dataset, rat_index, posttrial_name, stat
                 manual_scoring = np.append(manual_scoring ,el)
 
     return dataset, manual_scoring.astype(int)
+
+if __name__ == "__main__":
+    # with h5py.File("Rat3.h5", 'a') as f:
+    #     # Check if old group exists
+    #     if "HPC_100_CH46.continuous" in f:
+    #         # Copy old group to new location
+    #         f.copy("HPC_100_CH46.continuous", 'OS_Basic/Rat1_SD1_Basic_posttrial1')
+    #         # Delete the old group
+    #         del f["HPC_100_CH46.continuous"]
+    #         print(f"Renamed '{'HPC_100_CH46.continuous'}' to '{'OS_Basic/Rat1_SD1_Basic_posttrial1'}' successfully.")
+    #     else:
+    #         print(f"Group '{'HPC_100_CH46.continuous'}' not found in {'Rat3.h5'}.")
+    print(dataset_OS_RGS_CBD(
+        "Rat3.h5", [1], [0], [0],
+        ["artefact", "Wake", "NREM", "TS", "REM"]))
