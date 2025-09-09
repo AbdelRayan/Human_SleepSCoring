@@ -41,7 +41,7 @@ scalings = {
 
 
 
-file.plot(duration=300, scalings=scalings, show_scrollbars=True, block=True)
+# file.plot(duration=800, scalings=scalings, show_scrollbars=True, block=True)
 
 annotations = file.annotations
 
@@ -71,16 +71,20 @@ for onset, duration, stage in zip(onsets, durations, stages):
     idx = np.where((times >= onset) & (times < onset + duration))
     stage_vector[idx] = stage
 
+
+trim_seconds = 20000
+
+start_idx = np.searchsorted(times, trim_seconds)
+end_idx = np.searchsorted(times, times[-1] - trim_seconds)
+
+trimmed_stage_vector = stage_vector[start_idx:end_idx]
+trimmed_times = times[start_idx:end_idx]
+
 plt.figure(figsize=(15, 3))
-plt.plot(times, stage_vector, drawstyle='steps-post')
-
-plt.yticks(
-    [0, 1, 2, 3, 4],
-    ["Wake", "REM", "N1", "N2", "N3"]
-)
-
+plt.plot(trimmed_times, trimmed_stage_vector, drawstyle='steps-post')
+plt.yticks([0, 1, 2, 3, 4], ["Wake", "REM", "N1", "N2", "N3"])
 plt.gca().invert_yaxis()
 plt.xlabel("Time (seconds)")
 plt.ylabel("Sleep Stage")
-plt.title("Hypnogram")
+plt.title("Trimmed Hypnogram")
 plt.show()
