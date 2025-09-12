@@ -106,7 +106,7 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", out_prefix=None):
 
         f_out.write("\n[Channel Infos]\n")
         for i, ch in enumerate(channels, start=1):
-            f_out.write(f"Ch{i}={ch},,µV\n")
+            f_out.write(f"Ch{i}={ch},,,µV\n")
 
         # for line in vhdr_lines:
         #     if line.startswith("DataFile="):
@@ -120,12 +120,12 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", out_prefix=None):
         #         f_out.write(line)
 
 
-        # If no [Binary Infos] section, append one
-        if not has_binary_infos:
-            f_out.write("\n[Binary Infos]\n")
-            f_out.write("DataFormat=BINARY\n")
-            f_out.write("DataOrientation=MULTIPLEXED\n")
-            f_out.write("BinaryFormat=IEEE_FLOAT_32\n")
+        # # If no [Binary Infos] section, append one
+        # if not has_binary_infos:
+        #     f_out.write("\n[Binary Infos]\n")
+        #     f_out.write("DataFormat=BINARY\n")
+        #     f_out.write("DataOrientation=MULTIPLEXED\n")
+        #     f_out.write("BinaryFormat=IEEE_FLOAT_32\n")
 
     print(f"Patched .vhdr → {new_vhdr}")
 
@@ -157,6 +157,6 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", out_prefix=None):
 
 
 if __name__ == "__main__":
-    vhdr_file = "D:/Intercranial_sleep_data/2/iEEG/2_night1_02.vhdr"
+    vhdr_file = "D:/Intercranial_sleep_data/2/iEEG/2_night1_01.vhdr"
     binary_file = "D:/converted_sleep_data/2"
     convert_brainvision_ascii(vhdr_file, binary_file)
