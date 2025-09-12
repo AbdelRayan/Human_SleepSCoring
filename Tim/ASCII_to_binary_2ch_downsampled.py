@@ -87,20 +87,38 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", out_prefix=None):
     has_binary_infos = any(line.strip().startswith("[Binary Infos]") for line in vhdr_lines)
 
     with open(new_vhdr, "w", encoding="utf-8") as f_out:
-        for line in vhdr_lines:
-            if line.startswith("DataFile="):
-                f_out.write(f"DataFile={os.path.basename(new_dat)}\n")
-            elif line.startswith("MarkerFile="):
-                # force new marker file
-                f_out.write(f"MarkerFile={os.path.basename(new_vmrk)}\n")
-            elif line.startswith("SamplingInterval="):
-                f_out.write("SamplingInterval=4000\n")
-            else:
-                f_out.write(line)
+        # --- Write the new .vhdr ---
+        f_out.write("Brain Vision Data Exchange Header File Version 2.0\n")
+        f_out.write("; Data created from history path: artamonow_night1_01/Raw Data\n\n")
+        f_out.write("[Common Infos]\n")
+        f_out.write("Codepage=UTF-8\n")
+        f_out.write(f"DataFile={os.path.basename(new_dat)}\n")
+        f_out.write(f"MarkerFile={os.path.basename(new_vmrk)}\n")
+        f_out.write("DataFormat=BINARY\n")
+        f_out.write("DataOrientation=MULTIPLEXED\n")
+        f_out.write("DataType=TIMEDOMAIN\n")
+        f_out.write(f"NumberOfChannels={len(channels)}\n")
+        f_out.write(f"DataPoints={values.shape[0]}\n")  # after downsampling
+        f_out.write("SamplingInterval=4000\n")  # 1000 Hz → 250 Hz downsample
 
-        # If no MarkerFile line was present at all, add one in [Common Infos]
-        if not any("MarkerFile=" in l for l in vhdr_lines):
-            f_out.write(f"MarkerFile={os.path.basename(new_vmrk)}\n")
+        f_out.write("\n[Binary Infos]\n")
+        f_out.write("BinaryFormat=IEEE_FLOAT_32\n")
+
+        f_out.write("\n[Channel Infos]\n")
+        for i, ch in enumerate(channels, start=1):
+            f_out.write(f"Ch{i}={ch},,µV\n")
+
+        # for line in vhdr_lines:
+        #     if line.startswith("DataFile="):
+        #         f_out.write(f"DataFile={os.path.basename(new_dat)}\n")
+        #     elif line.startswith("MarkerFile="):
+        #         # force new marker file
+        #         f_out.write(f"MarkerFile={os.path.basename(new_vmrk)}\n")
+        #     elif line.startswith("SamplingInterval="):
+        #         f_out.write("SamplingInterval=4000\n")
+        #     else:
+        #         f_out.write(line)
+
 
         # If no [Binary Infos] section, append one
         if not has_binary_infos:
