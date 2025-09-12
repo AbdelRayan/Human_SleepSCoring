@@ -1,6 +1,6 @@
 import mne
 
-data = "D:/converted_sleep_data/2/2_night1_01.vhdr"
+data = "D:/converted_sleep_data/2/2_night1_02.vhdr"
 
 raw = mne.io.read_raw_brainvision(data)
 print(raw.get_channel_types())
