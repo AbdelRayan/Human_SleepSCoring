@@ -157,6 +157,6 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", out_prefix=None):
 
 
 if __name__ == "__main__":
-    vhdr_file = "D:/Intercranial_sleep_data/2/iEEG/2_night1_01.vhdr"
+    vhdr_file = "D:/Intercranial_sleep_data/2/iEEG/2_night1_03.vhdr"
     binary_file = "D:/converted_sleep_data/2"
     convert_brainvision_ascii(vhdr_file, binary_file)
