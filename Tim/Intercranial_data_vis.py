@@ -1,4 +1,6 @@
 import mne
+import matplotlib.pyplot as plt
+import yasa
 
 data = "D:/converted_sleep_data/2/2_night1_02.vhdr"
 
@@ -74,4 +76,13 @@ raw.set_channel_types({
     'EOG1':'eog'
 })
 
-raw.plot(block=True, scalings=dict(eeg=1e-4))
+sls = yasa.SleepStaging(raw, eeg_name="Cz")
+
+hypno_pred = sls.predict()  # Predict the sleep stages
+
+hypno_pred = yasa.hypno_str_to_int(hypno_pred)  # Convert "W" to 0, "N1" to 1, etc
+
+yasa.plot_hypnogram(hypno_pred)
+plt.show(block=True)
+
+# raw.plot(block=True, scalings=dict(eeg=1e-4))
