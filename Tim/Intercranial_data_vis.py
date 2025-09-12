@@ -1,0 +1,91 @@
+import mne
+import matplotlib.pyplot as plt
+import yasa
+import edfio
+
+data = "D:/converted_sleep_data/2/2_night1_01.vhdr"
+
+raw = mne.io.read_raw_brainvision(data)
+print(raw.get_channel_types())
+print(raw.ch_names)
+
+# raw.set_channel_types({
+#     'TBAR1': 'eeg',
+#     'TBAR2': 'eeg',
+#     'TBAR3': 'eeg',
+#     'TBAR4': 'eeg',
+#     'TBPR1': 'eeg',
+#     'TBPR2': 'eeg',
+#     'TBPR3': 'eeg',
+#     'TBPR4': 'eeg',
+#     'TLR01': 'eeg',
+#     'TLR02': 'eeg',
+#     'TLR03': 'eeg',
+#     'TLR04': 'eeg',
+#     'TLR05': 'eeg',
+#     'TLR06': 'eeg',
+#     'TBAL1': 'eeg',
+#     'TBAL2': 'eeg',
+#     'TBAL3': 'eeg',
+#     'TBAL4': 'eeg',
+#     'TBPL1': 'eeg',
+#     'TBPL2': 'eeg',
+#     'TBPL3': 'eeg',
+#     'TBPL4': 'eeg',
+#     'TLL01': 'eeg',
+#     'TLL02': 'eeg',
+#     'TLL03': 'eeg',
+#     'TLL04': 'eeg',
+#     'TLL05': 'eeg',
+#     'TLL06': 'eeg',
+#     'TR01': 'eeg',
+#     'TR02': 'eeg',
+#     'TR03': 'eeg',
+#     'TR04': 'eeg',
+#     'TR05': 'eeg',
+#     'TR06': 'eeg',
+#     'TR07': 'eeg',
+#     'TR08': 'eeg',
+#     'TR09': 'eeg',
+#     'TR10': 'eeg',
+#     'TL01':'eeg',
+#     'TL02':'eeg',
+#     'TL03':'eeg',
+#     'TL04':'eeg',
+#     'TL05':'eeg',
+#     'TL06':'eeg',
+#     'TL07':'eeg',
+#     'TL08':'eeg',
+#     'TL09':'eeg',
+#     'TL10':'eeg',
+#     'EKG1':'ecg',
+#     'EKG2':'ecg',
+#     'T5':'eeg',
+#     'T6':'eeg',
+#     'C3':'eeg',
+#     'C4':'eeg',
+#     'Cz':'eeg',
+#     'Oz':'eeg',
+#     'EOG1':'eog',
+#     'EOG2':'eog',
+#     'EMG1':'emg',
+#     'EMG2':'emg'
+# })
+
+raw.set_channel_types({
+    'Cz':'eeg',
+    'EOG1':'eog'
+})
+
+# sls = yasa.SleepStaging(raw, eeg_name="Cz")
+#
+# hypno_pred = sls.predict()  # Predict the sleep stages
+#
+# hypno_pred = yasa.hypno_str_to_int(hypno_pred)  # Convert "W" to 0, "N1" to 1, etc
+#
+# yasa.plot_hypnogram(hypno_pred)
+# plt.show(block=True)
+
+raw.export("2_night1_01.edf", fmt='edf', physical_range=(-200, 200))
+
+# raw.plot(block=True, scalings=dict(eeg=1e-4))
