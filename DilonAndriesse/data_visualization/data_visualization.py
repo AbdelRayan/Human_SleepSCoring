@@ -1,13 +1,6 @@
 import matplotlib.pyplot as plt
-import numpy as np
-from scipy.fftpack import fft
 import yasa
-
 import mne
-
-# load in data files
-psg_file = "C:/Users/andri/OneDrive - HAN/Desktop/Internship Donders/VSC/data/physionet.org/files/sleep-edfx/1.0.0/sleep-cassette/SC4001E0-PSG.edf"
-anno_file = "C:/Users/andri/OneDrive - HAN/Desktop/Internship Donders/VSC/data/physionet.org/files/sleep-edfx/1.0.0/sleep-cassette/SC4001EC-Hypnogram.edf"
 
 
 def read_raw_psg(psg_file):
@@ -15,7 +8,7 @@ def read_raw_psg(psg_file):
     Read the raw input PSG.edf file and extract the channels to be used.
 
     Parameters:
-    psg_file (str): The path to the PSG.edf file containing the raw data
+    psg_file (str): The path to the PSG.edf file containing the raw data.
     
     Returns:
     raw (obj): Object containing the raw measurement data.
@@ -40,7 +33,8 @@ def extract_annotation(anno_file, raw):
     polysomnography (PSG) data' tutorial
     
     Parameters:
-    anno_file (str): Path to the hypnogram.edf file containing annotations.
+    anno_file (str): Path to the hypnogram.edf file containing 
+    annotations.
     
     Returns:
     anno (obj): Object containing annotations.
@@ -54,7 +48,16 @@ def extract_annotation(anno_file, raw):
 
 
 def crop_data(anno, raw):
-    """
+    """ 
+    Crops the data to remove most of the measurement from being awake.
+
+    Parameters:
+    anno (obj): Object containing annotations.
+    raw (obj): Object containing the raw measurement data.
+
+    Returns:
+    cropped_anno (obj): Object containing annotations.
+    cropped_raw (obj): Object containing the raw measurement data.
     """
     # crop data for 30 minutes before and after being awake
     cropped_raw = raw.crop(
@@ -65,9 +68,6 @@ def crop_data(anno, raw):
         anno[1]["onset"] - 30 * 60, 
         anno[-2]["onset"] + 30 * 60
         )
-    
-    # # annotate the data with the changed annotations
-    # cropped_raw.set_annotations(anno, emit_warning=False)
 
     return cropped_raw, cropped_anno
 
@@ -76,19 +76,31 @@ def plot_data(cropped_raw):
     """
     Plot the raw signal data to an interactive plot with colored 
     annotations sections.
+
+    Parameters:
+    cropped_raw (obj): Object containing the raw measurement data.
     """
     cropped_raw.plot(
         start=0,
         # window size
         duration=300,
-        # stops the program from closing if plot is still opened
-        block=True,
+        # custom scalings
         scalings=dict(eeg=1e-4, eog=5e-4, emg=1e-6)
     )
 
 
-def create_sleep_events(raw, epoch):
+def create_sleep_events(cropped_raw, epoch):
     """
+    Get sleep events from the data with the sleep stages we are 
+    interested in.
+
+    Parameters:
+    cropped_raw (obj): Object containing the raw measurement data.
+    epoch (int): Integer representing epoch length.
+
+    Returns:
+    sleep_events (2d-list): A nested list with epoch index, 
+    and sleep stage id.
     """
     # dictionary of the current sleep stages and set ids
     annotation_desc_2_event_id = {
@@ -102,14 +114,21 @@ def create_sleep_events(raw, epoch):
 
     # creates nested list with epoch number and sleep stage
     sleep_events, _ = mne.events_from_annotations(
-        raw, event_id=annotation_desc_2_event_id, chunk_duration=epoch
+        cropped_raw, event_id=annotation_desc_2_event_id, chunk_duration=epoch
     )
 
     return sleep_events
 
 
-def plot_events(sleep_events, raw_data):
+def plot_events(sleep_events, cropped_raw):
     """
+    Creates a plot to give an overview of the distribution of 
+    sleep stages.
+
+    Parameters:
+    sleep_events (2d-list): A nested list with epoch index, 
+    and sleep stage id.
+    cropped_raw (obj): Object containing the raw measurement data.
     """
     # dictionary with the proper sleep stages and ids
     event_id = {
@@ -123,18 +142,31 @@ def plot_events(sleep_events, raw_data):
     mne.viz.plot_events(
         sleep_events,
         event_id=event_id,
-        sfreq=raw_data.info["sfreq"],
+        sfreq=cropped_raw.info["sfreq"],
         first_samp=sleep_events[0, 0]
     )
 
 
 def hypnogram_vis(cropped_raw, sleep_events):
     """
+    Plot a hypnogram and corresponding spectrogram.
+
+    Parameters:
+    cropped_raw (obj): Object containing the raw measurement data.
+    sleep_events (2d-list): A nested list with epoch index, 
+    and sleep stage id.
+
+    Returns:
+    hypno_up (list): List with the upscaled annotation
     """
     raw_array = []
+    # remove non-EEG channels
     cropped_raw.drop_channels(["horizontal", "submental"])
+    # units to use
     data = cropped_raw.get_data(units="uV")
+    # sampling frequency
     sf = cropped_raw.info["sfreq"]
+    # channel names
     chan = cropped_raw.ch_names
 
     # create array from sleep events with only sleep stages
@@ -144,45 +176,27 @@ def hypnogram_vis(cropped_raw, sleep_events):
     # plot hypnogram
     yasa.plot_hypnogram(raw_array, sf_hypno=float(1/30))
 
-
+    # upsample the annotation to the data
     hypno_up = yasa.hypno_upsample_to_data(
         raw_array, 
         sf_hypno=float(1/30), 
         data=cropped_raw
         )
+    # plot spectogram
     yasa.plot_spectrogram(data[chan.index("Fpz-Cz")], sf, hypno_up)
-
-    # stop the program from closing until plots are closed
-    #plt.show(block=True)
 
     return hypno_up
 
 
 def calc_bandpower(cropped_raw, hypno_up):
     """
+    Calculate and plot the band powers to the two EEG channels.
+
+    Parameters:
+    cropped_raw (obj): Object containing the raw measurement data.
+    hypno_up (list): List with the upscaled annotation
     """
     bandpower = yasa.bandpower(cropped_raw, hypno=hypno_up, include=(0, 1, 2, 3, 4))
     yasa.topoplot(bandpower.xs(3)["Delta"])
     yasa.topoplot(bandpower.xs(2)["Theta"])
     yasa.topoplot(bandpower.xs(0)["Gamma"])
-
-    plt.show(block=True)
-
-
-if __name__ == '__main__':
-    epoch = 30
-
-    # visualize the data of the different channels in dataset.
-    raw_data = read_raw_psg(psg_file)
-    anno_data = extract_annotation(anno_file, raw_data)
-    cropped_raw_data, cropped_anno_data = crop_data(anno_data, raw_data)
-    #plot_data(cropped_raw_data)
-
-    # visualize the distribution of epochs spend in certain sleep state
-    sleep_events = create_sleep_events(cropped_raw_data, epoch)
-    #plot_events(sleep_events, raw_data)
-
-    # yasa visualization of hypnogram and spectrogram plot
-    hypno_up = hypnogram_vis(raw_data, sleep_events)
-    calc_bandpower(cropped_raw_data, hypno_up)
-
