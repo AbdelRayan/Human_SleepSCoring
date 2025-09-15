@@ -2,7 +2,7 @@ import numpy as np
 import os
 import shutil
 
-def convert_brainvision_ascii(vhdr_file, out_dir="converted", out_prefix=None):
+def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=None):
     """
     Convert BrainVision ASCII .dat (vectorized, channels in rows)
     to binary multiplexed format and patch .vhdr accordingly.
@@ -23,8 +23,7 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", out_prefix=None):
     """
     base_dir = os.path.dirname(vhdr_file)
     base_name = os.path.splitext(os.path.basename(vhdr_file))[0]
-    if out_prefix is None:
-        out_prefix = base_name
+    out_prefix = base_name
 
     # Ensure output directory exists
     os.makedirs(out_dir, exist_ok=True)
@@ -61,7 +60,14 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", out_prefix=None):
             if not parts:
                 continue
             ch_name = parts[0]
-            if ch_name == 'EOG1' or ch_name == 'Cz':
+            if channel_select is not None and ch_name in channel_select:
+                if not os.path.exists(new_dat):
+                    orig_values = np.array(parts[1:], dtype=np.float32)
+                    n = len(orig_values) - (len(orig_values) % 4)
+                    orig_values = orig_values[:n]
+                    values = orig_values.reshape(-1, 4).mean(axis=1).astype(np.float32)
+                    data.append(values)
+            if channel_select is None:
                 if not os.path.exists(new_dat):
                     orig_values = np.array(parts[1:], dtype=np.float32)
                     n = len(orig_values) - (len(orig_values) % 4)
@@ -108,24 +114,6 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", out_prefix=None):
         for i, ch in enumerate(channels, start=1):
             f_out.write(f"Ch{i}={ch},,,µV\n")
 
-        # for line in vhdr_lines:
-        #     if line.startswith("DataFile="):
-        #         f_out.write(f"DataFile={os.path.basename(new_dat)}\n")
-        #     elif line.startswith("MarkerFile="):
-        #         # force new marker file
-        #         f_out.write(f"MarkerFile={os.path.basename(new_vmrk)}\n")
-        #     elif line.startswith("SamplingInterval="):
-        #         f_out.write("SamplingInterval=4000\n")
-        #     else:
-        #         f_out.write(line)
-
-
-        # # If no [Binary Infos] section, append one
-        # if not has_binary_infos:
-        #     f_out.write("\n[Binary Infos]\n")
-        #     f_out.write("DataFormat=BINARY\n")
-        #     f_out.write("DataOrientation=MULTIPLEXED\n")
-        #     f_out.write("BinaryFormat=IEEE_FLOAT_32\n")
 
     print(f"Patched .vhdr → {new_vhdr}")
 
@@ -159,4 +147,4 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", out_prefix=None):
 if __name__ == "__main__":
     vhdr_file = "D:/Intercranial_sleep_data/2/iEEG/2_night1_03.vhdr"
     binary_file = "D:/converted_sleep_data/2"
-    convert_brainvision_ascii(vhdr_file, binary_file)
+    convert_brainvision_ascii(vhdr_file, binary_file, ['EOG1', 'CZ'])
