@@ -145,6 +145,11 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=Non
 
 
 if __name__ == "__main__":
-    vhdr_file = "D:/Intercranial_sleep_data/2/iEEG/2_night1_03.vhdr"
-    binary_file = "D:/converted_sleep_data/2"
-    convert_brainvision_ascii(vhdr_file, binary_file, ['EOG1', 'CZ'])
+    base_path = "D:/Intercranial_sleep_data/2/iEEG/"
+    vhdr_files = [os.path.join(base_path,"2_night1_01.vhdr"),
+                  os.path.join(base_path,"2_night1_02.vhdr"),
+                  os.path.join(base_path,"2_night1_03.vhdr")]
+    binary_file = "D:/converted_sleep_data/2/con_full/"
+    for file in vhdr_files:
+        print(f"converting {file}")
+        convert_brainvision_ascii(file, binary_file)
