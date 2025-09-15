@@ -2,12 +2,40 @@ import mne
 import matplotlib.pyplot as plt
 import yasa
 import edfio
+import numpy as np
 
-data = "D:/converted_sleep_data/2/2_night1_01.vhdr"
-
-raw = mne.io.read_raw_brainvision(data)
-print(raw.get_channel_types())
-print(raw.ch_names)
+# files = [
+#     "D:/converted_sleep_data/2/2_night1_01.vhdr",
+#     "D:/converted_sleep_data/2/2_night1_02.vhdr",
+#     "D:/converted_sleep_data/2/2_night1_03.vhdr"
+# ]
+#
+# raw_list = [mne.io.read_raw_brainvision(f, preload=True) for f in files]
+# for r in raw_list:
+#     print(r.ch_names)
+#
+#
+# data = "D:/converted_sleep_data/2/2_night1_02.vhdr"
+#
+# raw = mne.io.read_raw_brainvision(data)
+# print(raw.get_channel_types())
+# print(raw.ch_names)
+#
+# raw_full = mne.concatenate_raws(raw_list)
+#
+#
+# scores_files = [
+#     "D:/converted_sleep_data/2/stages/2_night1_01_hypnogram.npy",
+#     "D:/converted_sleep_data/2/stages/2_night1_02_hypnogram.npy",
+#     "D:/converted_sleep_data/2/stages/2_night1_03_hypnogram.npy"
+# ]
+#
+# score_list = [np.load(f) for f in scores_files]
+# full_score = np.concatenate(score_list)
+#
+# raw_full.save("night1_full-raw.fif", overwrite=True)
+# raw_full.export("D:/converted_sleep_data/2/edf/night1_full.edf", fmt='edf')
+# np.save("D:/converted_sleep_data/2/stages/night1_full_score.npy", full_score)
 
 # raw.set_channel_types({
 #     'TBAR1': 'eeg',
@@ -72,10 +100,7 @@ print(raw.ch_names)
 #     'EMG2':'emg'
 # })
 
-raw.set_channel_types({
-    'Cz':'eeg',
-    'EOG1':'eog'
-})
+
 
 # sls = yasa.SleepStaging(raw, eeg_name="Cz")
 #
@@ -86,6 +111,34 @@ raw.set_channel_types({
 # yasa.plot_hypnogram(hypno_pred)
 # plt.show(block=True)
 
-raw.export("2_night1_01.edf", fmt='edf', physical_range=(-200, 200))
+# raw.export("D:/converted_sleep_data/2/edf/2_night1_02.edf", fmt='edf', physical_range=(-200, 200))
 
 # raw.plot(block=True, scalings=dict(eeg=1e-4))
+
+raw = mne.io.read_raw_edf("D:/converted_sleep_data/2/edf/night1_full.edf")
+
+raw.set_channel_types({
+    'Cz':'eeg',
+    'EOG1':'eog'
+})
+# Sampling frequency
+print("Sampling frequency:", raw.info["sfreq"], "Hz")
+
+# Number of samples (time points)
+print("Samples:", raw.n_times)
+scores = "D:/converted_sleep_data/2/stages/night1_full_score.npy"
+
+hypno = np.load(scores)
+chan = raw.ch_names
+sf = raw.info["sfreq"]
+data = raw.get_data(picks="eeg", units="uV")
+print(sf)
+print(len(hypno))
+print(np.unique(hypno))
+print(chan)
+hypno_up = yasa.hypno_upsample_to_data(hypno, sf_hypno=4/30, data=raw)
+yasa.plot_spectrogram(data[chan.index("Cz")], sf, hypno_up)
+plt.show(block=True)
+# yasa.plot_hypnogram(hypno)
+# plt.show(block=True)
+
