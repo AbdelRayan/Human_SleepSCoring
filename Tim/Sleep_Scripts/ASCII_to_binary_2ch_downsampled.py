@@ -60,14 +60,16 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=Non
             if not parts:
                 continue
             ch_name = parts[0]
-            if channel_select is not None and ch_name in channel_select:
-                if not os.path.exists(new_dat):
-                    orig_values = np.array(parts[1:], dtype=np.float32)
-                    n = len(orig_values) - (len(orig_values) % 4)
-                    orig_values = orig_values[:n]
-                    values = orig_values.reshape(-1, 4).mean(axis=1).astype(np.float32)
-                    data.append(values)
-            if channel_select is None:
+            if channel_select is not None:
+                if ch_name in channel_select:
+                    if not os.path.exists(new_dat):
+                        orig_values = np.array(parts[1:], dtype=np.float32)
+                        n = len(orig_values) - (len(orig_values) % 4)
+                        orig_values = orig_values[:n]
+                        values = orig_values.reshape(-1, 4).mean(axis=1).astype(np.float32)
+                        data.append(values)
+                    channels.append(ch_name)
+            else:
                 if not os.path.exists(new_dat):
                     orig_values = np.array(parts[1:], dtype=np.float32)
                     n = len(orig_values) - (len(orig_values) % 4)
