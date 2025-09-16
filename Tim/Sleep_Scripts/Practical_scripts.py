@@ -76,6 +76,16 @@ def convert_binary_brainvision(file):
     output = os.path.join(path, 'edf_files', edf)
     raw.export(output, fmt='edf')
 
+def convert_channel_types(raw):
+    ch_names = raw.ch_names
+    ch_dict = {}
+    for entry in ch_names:
+        ch_dict[entry] = ch_types[entry]
+    raw.set_channel_types(ch_dict)
+    return raw
+
 if __name__ == '__main__':
-    # file = "D:/converted_sleep_data/2/2_paradigm.vhdr"
+    file = "D:/converted_sleep_data/2/2_paradigm.vhdr"
+    raw = mne.io.read_raw_brainvision(file)
+    raw = convert_channel_types(raw)
     # convert_binary_brainvision(file)
