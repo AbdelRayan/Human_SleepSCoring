@@ -1,3 +1,9 @@
+"""
+Several helper functions for converting and altering eeg data
+By: Tim Veldema
+Date: 16/09/25
+"""
+
 import os
 import mne
 
@@ -65,12 +71,22 @@ ch_types = {
 }
 
 def get_path(file):
+    """
+    Simple function that returns the path and file name separately
+    :param file: full path to file - str
+    :return: full path to directory, file name - str, str
+    """
     path_list = file.split('/')
     path = os.path.join(*path_list[:-1])
     file_heh = path_list[-1]
     return path, file_heh
 
 def convert_binary_brainvision(file):
+    """
+    Converts binary brainvision dat files to edf, and places the resulting file in a folder named edf_files
+    in the same directory as the original file
+    :param file: full path to file - str
+    """
     raw = mne.io.read_raw_brainvision(file)
     path, file_vhdr = get_path(file)
     edf = file_vhdr.replace('vhdr', 'edf')
@@ -80,6 +96,11 @@ def convert_binary_brainvision(file):
     raw.export(output, fmt='edf')
 
 def convert_channel_types(raw):
+    """
+    Converts channels to their correct types
+    :param raw: raw mne file
+    :return: raw mne file with corrected channel types
+    """
     ch_names = raw.ch_names
     ch_dict = {}
     for entry in ch_names:
@@ -88,6 +109,11 @@ def convert_channel_types(raw):
     return raw
 
 def link_sections(directory, source):
+    """
+    Links fragmented night segments together to form full nights
+    :param directory: path to directory - str
+    :param source: file origin (brainvision or edf)
+    """
     nights = []
     for data in os.listdir(directory):
         if 'night' in data and 'vhdr' in data:
@@ -116,10 +142,6 @@ def link_sections(directory, source):
             os.mkdir(os.path.join(directory, 'combined_nights'))
         output = os.path.join(directory, 'combined_nights', key+extension)
         raw.export(output, fmt=source.lower())
-
-
-
-
 
 if __name__ == '__main__':
     file = "D:/converted_sleep_data/2"
