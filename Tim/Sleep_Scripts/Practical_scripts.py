@@ -1,5 +1,4 @@
 import os
-
 import mne
 
 ch_types = {
@@ -65,11 +64,15 @@ ch_types = {
     'EMG2':'emg'
 }
 
-def convert_binary_brainvision(file):
-    raw = mne.io.read_raw_brainvision(file)
+def get_path(file):
     path_list = file.split('/')
     path = os.path.join(*path_list[:-1])
-    file_vhdr = path_list[-1]
+    file_heh = path_list[-1]
+    return path, file_heh
+
+def convert_binary_brainvision(file):
+    raw = mne.io.read_raw_brainvision(file)
+    path, file_vhdr = get_path(file)
     edf = file_vhdr.replace('vhdr', 'edf')
     if not os.path.isdir(os.path.join(path, 'edf_files')):
         os.mkdir(os.path.join(path, 'edf_files'))
@@ -84,8 +87,40 @@ def convert_channel_types(raw):
     raw.set_channel_types(ch_dict)
     return raw
 
+def link_sections(directory, source):
+    nights = []
+    for data in os.listdir(directory):
+        if 'night' in data and 'vhdr' in data:
+            nights.append(data)
+    night_dict = {}
+    for night in nights:
+        subject, night, number = night.split("_")
+        if night not in night_dict:
+            night_dict[night] = [os.path.join(directory, subject + '_' + night + '_' + number)]
+        else:
+            night_dict[night].append(os.path.join(directory, subject + '_' + night + '_' + number))
+    for key in night_dict:
+        extension = ""
+        files = night_dict[key]
+        if source.upper() == 'BRAINVISION':
+            raw_list = [mne.io.read_raw_brainvision(f, preload=True) for f in files]
+            extension = '.dat'
+        elif source.upper() == 'EDF':
+            raw_list = [mne.io.read_raw_edf(file, preload=True) for f in files]
+            extension = '.edf'
+        else:
+            print("invalid source selected, choose either BRAINVISION or EDF")
+            return
+        raw = mne.concatenate_raws(raw_list)
+        if not os.path.isdir(os.path.join(directory, 'combined_nights')):
+            os.mkdir(os.path.join(directory, 'combined_nights'))
+        output = os.path.join(directory, 'combined_nights', key+extension)
+        raw.export(output, fmt=source.lower())
+
+
+
+
+
 if __name__ == '__main__':
-    file = "D:/converted_sleep_data/2/2_paradigm.vhdr"
-    raw = mne.io.read_raw_brainvision(file)
-    raw = convert_channel_types(raw)
-    # convert_binary_brainvision(file)
+    file = "D:/converted_sleep_data/2"
+    link_sections(file, 'brainvision')
