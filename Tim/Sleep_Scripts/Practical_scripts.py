@@ -70,30 +70,46 @@ ch_types = {
     'EMG2':'emg'
 }
 
+
 def get_path(file):
     """
-    Simple function that returns the path and file name separately
+    Returns the directory path and file name separately.
+
     :param file: full path to file - str
     :return: full path to directory, file name - str, str
     """
-    path_list = file.split('/')
-    path = os.path.join(*path_list[:-1])
-    file_heh = path_list[-1]
-    return path, file_heh
+    path = os.path.dirname(file)
+    filename = os.path.basename(file)
+    return path, filename
+
+
+import os
+import mne
+
 
 def convert_binary_brainvision(file):
     """
-    Converts binary brainvision dat files to edf, and places the resulting file in a folder named edf_files
-    in the same directory as the original file
-    :param file: full path to file - str
+    Converts binary BrainVision .dat files to EDF, and places the resulting file in a folder named 'edf_files'
+    in the same directory as the original .vhdr file.
     """
     raw = mne.io.read_raw_brainvision(file)
-    path, file_vhdr = get_path(file)
-    edf = file_vhdr.replace('vhdr', 'edf')
-    if not os.path.isdir(os.path.join(path, 'edf_files')):
-        os.mkdir(os.path.join(path, 'edf_files'))
-    output = os.path.join(path, 'edf_files', edf)
+
+    # Get directory + filename
+    path = os.path.dirname(file)
+    file_vhdr = os.path.basename(file)
+
+    # Construct EDF filename
+    edf = file_vhdr.replace('.vhdr', '.edf')
+    output_dir = os.path.join(path, 'edf_files')
+
+    # Create folder if missing
+    os.makedirs(output_dir, exist_ok=True)
+
+    output = os.path.join(output_dir, edf)
+    print(f"Saving EDF to: {output}")
+
     raw.export(output, fmt='edf')
+
 
 def convert_channel_types(raw):
     """
@@ -126,7 +142,7 @@ def link_sections(directory, source):
         else:
             night_dict[night].append(os.path.join(directory, subject + '_' + night + '_' + number))
     for key in night_dict:
-        extension = ""
+        print(f"Linking {key}")
         files = night_dict[key]
         if source.upper() == 'BRAINVISION':
             raw_list = [mne.io.read_raw_brainvision(f, preload=True) for f in files]
@@ -140,7 +156,7 @@ def link_sections(directory, source):
         raw = mne.concatenate_raws(raw_list)
         if not os.path.isdir(os.path.join(directory, 'combined_nights')):
             os.mkdir(os.path.join(directory, 'combined_nights'))
-        output = os.path.join(directory, 'combined_nights', key+extension)
+        output = os.path.join(directory, 'combined_nights', key + extension)
         raw.export(output, fmt=source.lower())
 
 if __name__ == '__main__':
