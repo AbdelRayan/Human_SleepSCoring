@@ -1,0 +1,1 @@
+pip install matplotlib==3.10.5 numpy==2.2.6 scipy==1.16.1 mne==1.10.1 yasa==0.6.5
