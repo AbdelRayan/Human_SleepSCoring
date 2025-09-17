@@ -1,7 +1,8 @@
 import mne
+import numpy as np
 
 
-def read_raw_psg(psg_file):
+def read_raw_psg(psg_file, channels):
     """ 
     Read the raw input PSG.edf file and extract the channels to be used.
 
@@ -18,7 +19,7 @@ def read_raw_psg(psg_file):
         # load data in memory for data manipulation and faster indexing
         preload=True,
         # exclude unused channels
-        exclude=["Event marker", "oro-nasal", "rectal"]
+        include=channels
     )
 
     return raw
@@ -45,28 +46,69 @@ def extract_annotation(anno_file, raw):
     return anno
 
 
-def crop_data(data, anno):
+def crop_data(raw, wake_time):
     """ 
     Crops the data to remove most of the measurement from being awake.
 
     Parameters:
-    anno (obj): Object containing annotations.
     raw (obj): Object containing the raw measurement data.
+    wake_time (int): Integer containing the amount of seconds to use 
+    before and after first sleep
 
     Returns:
-    cropped_anno (obj): Object containing annotations.
     cropped_raw (obj): Object containing the raw measurement data.
     """
-    # crop data for 30 minutes before and after being awake
-    cropped_data = data.crop(
-        anno[1]["onset"] - 30 * 60, 
-        anno[-2]["onset"] + 30 * 60
-        )
+    # get annotations from annotated raw object
+    anno = raw.annotations
+
+    # get list of descriptions (sleep stages) from the annotation
+    desc_list = anno.description
+
+    # create list of booleans for when a sleep stage is 
+    # considered not asleep (True when sleep, False when not)
+    sleep_bool = np.array([d != "Sleep stage W" and d != "Sleep stage ?" for d in desc_list])
+
+    # create list with indexes
+    sleep_idx = np.where(sleep_bool)[0]
+
+    # get index of first sleep stage
+    first_sleep = sleep_idx[0]
+    # get index of last sleep stage
+    last_sleep  = sleep_idx[-1]
+
+    # get starting time of first sleep stage
+    first_sleep_start = anno.onset[first_sleep]
+    # get ending time of last sleep stage
+    last_sleep_end = anno.onset[last_sleep] + anno.duration[last_sleep]
+
+    print(f"First sleep starts at: {first_sleep_start}")
+    print(f"Last sleep ends at: {last_sleep_end}")
+
+    # get the maximum value between 30 mins before first sleep stage 
+    # and start time 
+    # (to avoid ValueErrors where tmax is larger than max time)
+    crop_start = max(0, first_sleep_start - wake_time)
+
+    # get the minimum value between 30 mins after last sleep stage
+    # and the end time of raw object
+    crop_end = min(raw.times[-1], last_sleep_end + wake_time)
+
+    print(f"Cropping raw: {crop_start} - {crop_end}")
+
+    # crop data for 30 minutes before first sleep and after last sleep
+    try:
+        cropped_raw = raw.crop(
+            crop_start, 
+            crop_end
+            )
+        print("Cropping finished.")
+    except ValueError as e:
+        print(f"An error has occured: {e}")
     
-    return cropped_data
+    return cropped_raw
 
 
-def create_sleep_events(cropped_raw, epoch):
+def create_sleep_events(cropped_raw, chunk_duration):
     """
     Get sleep events from the data with the sleep stages we are 
     interested in.
@@ -91,7 +133,7 @@ def create_sleep_events(cropped_raw, epoch):
 
     # creates nested list with epoch number and sleep stage
     sleep_events, _ = mne.events_from_annotations(
-        cropped_raw, event_id=annotation_desc_2_event_id, chunk_duration=epoch
+        cropped_raw, event_id=annotation_desc_2_event_id, chunk_duration=chunk_duration
     )
 
     return sleep_events
