@@ -82,11 +82,6 @@ def get_path(file):
     filename = os.path.basename(file)
     return path, filename
 
-
-import os
-import mne
-
-
 def convert_binary_brainvision(file):
     """
     Converts binary BrainVision .dat files to EDF, and places the resulting file in a folder named 'edf_files'
@@ -109,7 +104,6 @@ def convert_binary_brainvision(file):
     print(f"Saving EDF to: {output}")
 
     raw.export(output, fmt='edf')
-
 
 def convert_channel_types(raw):
     """
@@ -158,6 +152,9 @@ def link_sections(directory, source):
             os.mkdir(os.path.join(directory, 'combined_nights'))
         output = os.path.join(directory, 'combined_nights', key + extension)
         raw.export(output, fmt=source.lower())
+
+def down_sample(file):
+
 
 if __name__ == '__main__':
     file = "D:/converted_sleep_data/2"
