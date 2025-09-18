@@ -153,9 +153,6 @@ def link_sections(directory, source):
         output = os.path.join(directory, 'combined_nights', key + extension)
         raw.export(output, fmt=source.lower())
 
-def down_sample(file):
-
-
 if __name__ == '__main__':
     file = "D:/converted_sleep_data/2"
     link_sections(file, 'brainvision')
