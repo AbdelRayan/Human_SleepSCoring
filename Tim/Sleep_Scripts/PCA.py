@@ -15,7 +15,8 @@ def channel_pca(raw, band):
     low, high = bands[band]
     raw_filt = raw.copy().filter(low, high, fir_design='firwin')
 
-    data, ch_names = raw_filt.get_data(return_times=False), raw_filt.ch_names
+    data, ch_names = raw.get_data(return_times=False, picks='eeg'), raw.ch_names
+    data = data.astype(np.float32)
     # shape = (n_channels, n_times)
 
     pca = PCA(n_components=5)
