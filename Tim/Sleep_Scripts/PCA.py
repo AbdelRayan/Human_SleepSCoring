@@ -1,6 +1,7 @@
 import mne
 import numpy as np
 from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
 
 def channel_pca(raw, band):
     bands = {
@@ -42,3 +43,33 @@ def channel_pca(raw, band):
         xy = montage_pos[ch_names[pc_top]][:2]  # 2D xy projection
         plt.scatter(xy[0], xy[1], c="gold", s=200, marker="*", edgecolors="k")
         plt.show()
+
+def parse_positions(text, to_meters=True):
+    """
+    Convert raw electrode coordinate text into a dictionary.
+
+    Parameters
+    ----------
+    text : str
+        Multiline string with rows like:
+        'TBAL01,-14.7597,-6.0460,-25.5850,3.0,0.0,0.0,1.0'
+    to_meters : bool
+        If True, convert mm → m for MNE compatibility.
+
+    Returns
+    -------
+    coords : dict
+        Dictionary mapping channel names to (x, y, z) coordinates.
+    """
+    coords = {}
+    for line in text.strip().splitlines():
+        parts = line.split(",")
+        if len(parts) < 4:
+            continue  # skip malformed rows
+        ch_name = parts[0].strip()
+        x, y, z = map(float, parts[1:4])
+        if to_meters:
+            coords[ch_name] = np.array([x, y, z]) / 1000.0
+        else:
+            coords[ch_name] = np.array([x, y, z])
+    return coords
