@@ -6,6 +6,18 @@ import matplotlib.pyplot as plt
 import re
 
 def channel_pca(raw, band):
+    """
+    Run PCA on EEG channels for a given frequency band, print top channels,
+    and plot PCA loadings as topomaps with stars on top channels.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Preloaded raw EEG data with montage set.
+    band : str
+        One of ['noise','delta','theta','sigma','beta','gamma','total'].
+    """
+    # Define frequency bands
     bands = {
         'noise':[0,0.5], 'delta':[0.5,5],
         'theta':[6,10], 'sigma':[11,17],
@@ -18,14 +30,14 @@ def channel_pca(raw, band):
 
     low, high = bands[band]
 
-    # Filter the data
+    # Filter raw data
     raw_filt = raw.copy().filter(low, high, fir_design='firwin')
 
     # Pick EEG channels only
     eeg_picks = mne.pick_types(raw_filt.info, eeg=True)
     ch_names = [raw_filt.info['ch_names'][i] for i in eeg_picks]
 
-    # Get data and convert to float32 to save memory
+    # Extract data and convert to float32 to save memory
     data = raw_filt.get_data(picks=eeg_picks).astype(np.float32)
     # shape = (n_channels, n_times)
 
@@ -34,16 +46,16 @@ def channel_pca(raw, band):
     pca.fit(data.T)  # shape = (n_times × n_channels)
     loadings = pca.components_  # shape = (n_components × n_channels)
 
-    # Top channels
+    # Identify top channels
     pc1_top = np.argmax(np.abs(loadings[0]))
     pc2_top = np.argmax(np.abs(loadings[1]))
-
     print("Top channels:")
     print("PC1 ->", ch_names[pc1_top])
     print("PC2 ->", ch_names[pc2_top])
 
-    # Create a new Info object for EEG channels only
+    # Create EEG-only Info object and attach montage
     info_eeg = mne.create_info(ch_names=ch_names, sfreq=raw.info['sfreq'], ch_types='eeg')
+    info_eeg.set_montage(raw_filt.get_montage())
 
     # Plot topomaps for PC1 and PC2
     for i, pc_top in enumerate([pc1_top, pc2_top]):
@@ -54,11 +66,10 @@ def channel_pca(raw, band):
                                   outlines="head", show=False)
 
         # Overlay star on top channel
-        montage_pos = raw_filt.get_montage().get_positions()["ch_pos"]
+        montage_pos = info_eeg.get_montage().get_positions()["ch_pos"]
         xy = montage_pos[ch_names[pc_top]][:2]  # 2D xy projection
         plt.scatter(xy[0], xy[1], c="gold", s=200, marker="*", edgecolors="k")
         plt.show()
-
 def parse_positions_with_mapping(text, final_names, to_meters=True):
     """
     Parse electrode coordinates and remap them to a given list of channel names.
