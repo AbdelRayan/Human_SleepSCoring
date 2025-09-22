@@ -3,18 +3,17 @@ import numpy as np
 from sklearn.decomposition import PCA
 
 def channel_pca(raw, band):
-    bands = {'noise_band':[0,0.5], 'delta_band':[0.5,5],
-    'theta_band':[6,10], 'sigma_band':[11,17], 'beta_band':[22,30],
-    'gamma_band':[35,45], 'total_band':[0,30]}
+    bands = {'noise':[0,0.5], 'delta':[0.5,5],
+    'theta':[6,10], 'sigma':[11,17], 'beta':[22,30],
+    'gamma':[35,45], 'total':[0,30]}
 
-    # 2. Bandpass filter to target band (example: sigma 11–16 Hz)
-    raw.filter(11, 16, fir_design='firwin')
+    low, high = bands[band][0], bands[band][1]
 
-    # 3. Get data matrix (channels × time)
+    raw.filter(low, high, fir_design='firwin')
+
     data, ch_names = raw.get_data(return_times=False), raw.ch_names
     # shape = (n_channels, n_times)
 
-    # 4. Run PCA
     pca = PCA(n_components=5)  # you only need first 2 PCs
     pca.fit(data.T)  # transpose to (time × channels)
 
