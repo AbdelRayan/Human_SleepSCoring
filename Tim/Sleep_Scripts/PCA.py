@@ -2,6 +2,7 @@ import mne
 import numpy as np
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
+import re
 
 def channel_pca(raw, band):
     bands = {
@@ -44,32 +45,37 @@ def channel_pca(raw, band):
         plt.scatter(xy[0], xy[1], c="gold", s=200, marker="*", edgecolors="k")
         plt.show()
 
-def parse_positions(text, to_meters=True):
+def parse_positions_with_mapping(text, final_names, to_meters=True):
     """
-    Convert raw electrode coordinate text into a dictionary.
+    Parse electrode coordinates and remap them to a given list of channel names.
 
     Parameters
     ----------
     text : str
         Multiline string with rows like:
         'TBAL01,-14.7597,-6.0460,-25.5850,3.0,0.0,0.0,1.0'
+    final_names : list of str
+        Correct channel names in the same order as rows in `text`.
     to_meters : bool
         If True, convert mm → m for MNE compatibility.
 
     Returns
     -------
     coords : dict
-        Dictionary mapping channel names to (x, y, z) coordinates.
+        Dictionary mapping `final_names` to (x, y, z) coordinates.
     """
     coords = {}
-    for line in text.strip().splitlines():
+    lines = [l for l in text.strip().splitlines() if l.strip()]
+    if len(lines) != len(final_names):
+        raise ValueError(f"Number of lines ({len(lines)}) != number of final names ({len(final_names)})")
+
+    for new_name, line in zip(final_names, lines):
         parts = line.split(",")
         if len(parts) < 4:
-            continue  # skip malformed rows
-        ch_name = parts[0].strip()
+            continue
         x, y, z = map(float, parts[1:4])
         if to_meters:
-            coords[ch_name] = np.array([x, y, z]) / 1000.0
+            coords[new_name] = np.array([x, y, z]) / 1000.0
         else:
-            coords[ch_name] = np.array([x, y, z])
+            coords[new_name] = np.array([x, y, z])
     return coords
