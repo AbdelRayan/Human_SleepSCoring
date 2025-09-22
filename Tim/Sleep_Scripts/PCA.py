@@ -1,6 +1,7 @@
 import mne
 import numpy as np
 from sklearn.decomposition import PCA
+from sklearn.decomposition import IncrementalPCA
 import matplotlib.pyplot as plt
 import re
 
@@ -12,18 +13,28 @@ def channel_pca(raw, band):
         'total':[0,30]
     }
 
+    if band not in bands:
+        raise ValueError(f"Band '{band}' not recognized")
+
     low, high = bands[band]
+
+    # Filter the data
     raw_filt = raw.copy().filter(low, high, fir_design='firwin')
 
-    data, ch_names = raw.get_data(return_times=False, picks='eeg'), raw.ch_names
-    data = data.astype(np.float32)
+    # Pick EEG channels only
+    eeg_picks = mne.pick_types(raw_filt.info, eeg=True)
+    ch_names = [raw_filt.info['ch_names'][i] for i in eeg_picks]
+
+    # Get data and convert to float32 to save memory
+    data = raw_filt.get_data(picks=eeg_picks).astype(np.float32)
     # shape = (n_channels, n_times)
 
-    pca = PCA(n_components=5)
-    pca.fit(data.T)  # (time × channels)
-    loadings = pca.components_  # (n_components × n_channels)
+    # Run Incremental PCA
+    pca = IncrementalPCA(n_components=2, batch_size=10000)
+    pca.fit(data.T)  # shape = (n_times × n_channels)
+    loadings = pca.components_  # shape = (n_components × n_channels)
 
-    # top channels
+    # Top channels
     pc1_top = np.argmax(np.abs(loadings[0]))
     pc2_top = np.argmax(np.abs(loadings[1]))
 
@@ -31,16 +42,18 @@ def channel_pca(raw, band):
     print("PC1 ->", ch_names[pc1_top])
     print("PC2 ->", ch_names[pc2_top])
 
-    # plot topomaps for PC1 and PC2
+    # Create a new Info object for EEG channels only
+    info_eeg = mne.create_info(ch_names=ch_names, sfreq=raw.info['sfreq'], ch_types='eeg')
+
+    # Plot topomaps for PC1 and PC2
     for i, pc_top in enumerate([pc1_top, pc2_top]):
-        evoked = mne.EvokedArray(loadings[i][:, np.newaxis], raw_filt.info, tmin=0)
+        evoked = mne.EvokedArray(loadings[i][:, np.newaxis], info_eeg, tmin=0)
         evoked.comment = f"PC{i+1}"
         fig = evoked.plot_topomap(times=0, scalings=1, cmap="RdBu_r",
                                   size=3, time_format=f"PC{i+1}",
                                   outlines="head", show=False)
 
-        # overlay star on top channel
-        pos = raw_filt.info["chs"][pc_top]["loc"][:3]
+        # Overlay star on top channel
         montage_pos = raw_filt.get_montage().get_positions()["ch_pos"]
         xy = montage_pos[ch_names[pc_top]][:2]  # 2D xy projection
         plt.scatter(xy[0], xy[1], c="gold", s=200, marker="*", edgecolors="k")
