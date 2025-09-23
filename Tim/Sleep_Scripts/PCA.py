@@ -11,52 +11,42 @@ def channel_pca(raw, band, electrode_text):
     Run PCA on EEG channels for a given frequency band, print top channels,
     and plot PCA loadings in 3D using electrode coordinates from a text string.
 
+    Automatically handles bad channels, missing coordinates, and minor naming inconsistencies.
+
     Parameters
     ----------
     raw : mne.io.Raw
-        Preloaded raw EEG data with montage set.
+        Preloaded raw EEG data.
     band : str
         One of ['noise','delta','theta','sigma','beta','gamma','total'].
     electrode_text : str
         Multiline string with electrode info, format:
         Name,X,Y,Z,other_columns...
     """
-    # Define frequency bands
+    # Frequency bands
     bands = {
         'noise':[0,0.5], 'delta':[0.5,5],
         'theta':[6,10], 'sigma':[11,17],
         'beta':[22,30], 'gamma':[35,45],
         'total':[0,30]
     }
-
     if band not in bands:
         raise ValueError(f"Band '{band}' not recognized")
-
     low, high = bands[band]
 
     # Filter raw data
     raw_filt = raw.copy().filter(low, high, fir_design='firwin')
 
-    # Pick EEG channels only
-    eeg_picks = mne.pick_types(raw_filt.info, eeg=True)
+    # Pick EEG channels, exclude bad channels
+    eeg_picks = mne.pick_types(raw_filt.info, eeg=True, exclude='bads')
     ch_names = [raw_filt.info['ch_names'][i] for i in eeg_picks]
+    if not ch_names:
+        raise RuntimeError("No good EEG channels available for PCA.")
 
-    # Extract data and convert to float32 to save memory
+    # Extract data
     data = raw_filt.get_data(picks=eeg_picks).astype(np.float32)
 
-    # Run Incremental PCA
-    pca = IncrementalPCA(n_components=2, batch_size=10000)
-    pca.fit(data.T)
-    loadings = pca.components_  # shape = (n_components × n_channels)
-
-    # Identify top channels
-    pc1_top = np.argmax(np.abs(loadings[0]))
-    pc2_top = np.argmax(np.abs(loadings[1]))
-    print("Top channels:")
-    print("PC1 ->", ch_names[pc1_top])
-    print("PC2 ->", ch_names[pc2_top])
-
-    # Parse electrode coordinates from text
+    # Parse electrode coordinates
     lines = [line.strip() for line in electrode_text.strip().splitlines() if line.strip()]
     coord_dict = {}
     for line in lines:
@@ -65,12 +55,55 @@ def channel_pca(raw, band, electrode_text):
         x, y, z = map(float, parts[1:4])
         coord_dict[name] = np.array([x, y, z])
 
-    # Build arrays for plotting, matching ch_names order
-    coords = np.array([coord_dict[ch] for ch in ch_names])
+    # Helper: find coordinate, try zero-padding if missing
+    def find_coord(ch):
+        if ch in coord_dict:
+            return coord_dict[ch]
+        m = re.search(r"(\D+)(\d+)$", ch)
+        if m:
+            base, num = m.groups()
+            alt1 = f"{base}{int(num):02d}"  # e.g., 1 -> 01
+            alt2 = f"{base}{int(num)}"      # e.g., 01 -> 1
+            for alt in [alt1, alt2]:
+                if alt in coord_dict:
+                    return coord_dict[alt]
+        return None
 
-    # 3D plot with PCA loadings
+    # Filter channels to those with coordinates
+    coords_list = []
+    valid_ch_names = []
+    valid_picks = []
+
+    for idx, ch in enumerate(ch_names):
+        coord = find_coord(ch)
+        if coord is not None:
+            coords_list.append(coord)
+            valid_ch_names.append(ch)
+            valid_picks.append(idx)
+        else:
+            print(f"Warning: {ch} missing coordinates, excluding from PCA.")
+
+    if len(valid_ch_names) < 2:
+        raise RuntimeError("Not enough channels with coordinates to run PCA.")
+
+    coords = np.array(coords_list)
+    data = data[valid_picks, :]  # Only valid channels
+
+    # Run Incremental PCA
+    pca = IncrementalPCA(n_components=2, batch_size=10000)
+    pca.fit(data.T)
+    loadings = pca.components_
+
+    # Identify top channels
+    pc1_top = np.argmax(np.abs(loadings[0]))
+    pc2_top = np.argmax(np.abs(loadings[1]))
+    print("Top channels:")
+    print("PC1 ->", valid_ch_names[pc1_top])
+    print("PC2 ->", valid_ch_names[pc2_top])
+
+    # 3D plot for PC1 and PC2
     for i, pc_top in enumerate([pc1_top, pc2_top]):
-        fig = plt.figure(figsize=(10,8))
+        fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(111, projection='3d')
         sc = ax.scatter(coords[:,0], coords[:,1], coords[:,2],
                         c=loadings[i], cmap='RdBu_r', s=100, edgecolors='k')
@@ -78,12 +111,11 @@ def channel_pca(raw, band, electrode_text):
         ax.set_xlabel('X (mm)')
         ax.set_ylabel('Y (mm)')
         ax.set_zlabel('Z (mm)')
-        plt.title(f'PC{i+1} Loadings')
+        plt.title(f'PC{i+1} Loadings - {band}')
 
         # Highlight top channel
         ax.text(coords[pc_top,0], coords[pc_top,1], coords[pc_top,2],
-                ch_names[pc_top], color='gold', fontsize=12)
-
+                valid_ch_names[pc_top], color='gold', fontsize=12)
         plt.show()
 
 def parse_positions_with_mapping(text, final_names, to_meters=True):
