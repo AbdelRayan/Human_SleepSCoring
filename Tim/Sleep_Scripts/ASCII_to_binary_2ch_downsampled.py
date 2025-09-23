@@ -1,11 +1,18 @@
 import numpy as np
 import os
 import shutil
+import mne
 
 def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=None):
     """
     Convert BrainVision ASCII .dat (vectorized, channels in rows)
     to binary multiplexed format and patch .vhdr accordingly.
+
+    Differences vs. original:
+    - Channels are replaced with bipolar derivations:
+        * EEG vs Cz (for all in channel_select)
+        * EOG1-EOG2
+        * EMG1-EMG2
 
     Parameters
     ----------
@@ -13,8 +20,9 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=Non
         Path to the original .vhdr file.
     out_dir : str
         Directory where converted files will be stored.
-    out_prefix : str or None
-        Prefix for new files. If None, uses the original base name.
+    channel_select : list[str] or None
+        EEG channels to re-reference against Cz.
+        EOG1/2 and EMG1/2 are always included automatically.
 
     Returns
     -------
@@ -29,8 +37,7 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=Non
     os.makedirs(out_dir, exist_ok=True)
 
     # Parse .vhdr to find data and marker files
-    dat_file = None
-    vmrk_file = None
+    dat_file, vmrk_file = None, None
     with open(vhdr_file, "r", encoding="utf-8", errors="ignore") as f:
         for line in f:
             if line.startswith("DataFile="):
@@ -50,54 +57,57 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=Non
     new_vhdr = os.path.join(out_dir, f"{out_prefix}.vhdr")
     new_vmrk = os.path.join(out_dir, f"{out_prefix}.vmrk")
 
-    # ---- Step 1: Convert ASCII .dat to binary multiplexed ----
-    channels = []
-    data = []
-
+    # ---- Step 1: Load ASCII .dat ----
+    all_channels = {}
     with open(dat_file, "r") as f:
         for line in f:
             parts = line.strip().split()
             if not parts:
                 continue
             ch_name = parts[0]
-            if channel_select is not None:
-                if ch_name in channel_select:
-                    if not os.path.exists(new_dat):
-                        orig_values = np.array(parts[1:], dtype=np.float32)
-                        n = len(orig_values) - (len(orig_values) % 4)
-                        orig_values = orig_values[:n]
-                        values = orig_values.reshape(-1, 4).mean(axis=1).astype(np.float32)
-                        data.append(values)
-                    channels.append(ch_name)
-            else:
-                if not os.path.exists(new_dat):
-                    orig_values = np.array(parts[1:], dtype=np.float32)
-                    n = len(orig_values) - (len(orig_values) % 4)
-                    orig_values = orig_values[:n]
-                    values = orig_values.reshape(-1, 4).mean(axis=1).astype(np.float32)
-                    data.append(values)
-                channels.append(ch_name)
+            values = np.array(parts[1:], dtype=np.float32)
+            n = len(values) - (len(values) % 4)
+            values = values[:n].reshape(-1, 4).mean(axis=1).astype(np.float32)
+            all_channels[ch_name] = values
 
-    if not os.path.exists(new_dat):
-        data = np.vstack(data)
-        multiplexed = data.T.astype(np.float32).ravel(order="C")
+    n_samples = len(next(iter(all_channels.values())))
 
-        with open(new_dat, "wb") as f:
-            f.write(multiplexed.tobytes())
+    # ---- Step 2: Build bipolar derivations ----
+    bipolar_data = []
+    bipolar_names = []
 
-        print(f"Converted {len(channels)} channels × {data.shape[1]} samples")
-        print(f"Saved new binary .dat → {new_dat}")
+    # EEG channels vs Cz
+    if channel_select is not None and "Cz" in all_channels:
+        for ch in channel_select:
+            if ch in all_channels:
+                new_name = f"{ch}-Cz"
+                bipolar_data.append(all_channels[ch] - all_channels["Cz"])
+                bipolar_names.append(new_name)
 
-    # ---- Step 2: Copy and patch .vhdr ----
-    with open(vhdr_file, "r", encoding="utf-8", errors="ignore") as f_in:
-        vhdr_lines = f_in.readlines()
+    # EOG
+    if "EOG1" in all_channels and "EOG2" in all_channels:
+        bipolar_data.append(all_channels["EOG1"] - all_channels["EOG2"])
+        bipolar_names.append("EOG1-EOG2")
 
-    has_binary_infos = any(line.strip().startswith("[Binary Infos]") for line in vhdr_lines)
+    # EMG
+    if "EMG1" in all_channels and "EMG2" in all_channels:
+        bipolar_data.append(all_channels["EMG1"] - all_channels["EMG2"])
+        bipolar_names.append("EMG1-EMG2")
 
+    bipolar_data = np.vstack(bipolar_data)
+
+    # ---- Step 3: Write binary multiplexed file ----
+    multiplexed = bipolar_data.T.astype(np.float32).ravel(order="C")
+    with open(new_dat, "wb") as f:
+        f.write(multiplexed.tobytes())
+
+    print(f"Converted {len(bipolar_names)} bipolar channels × {n_samples} samples")
+    print(f"Saved new binary .dat → {new_dat}")
+
+    # ---- Step 4: Write patched .vhdr ----
     with open(new_vhdr, "w", encoding="utf-8") as f_out:
-        # --- Write the new .vhdr ---
         f_out.write("Brain Vision Data Exchange Header File Version 2.0\n")
-        f_out.write("; Data created from history path: artamonow_night1_01/Raw Data\n\n")
+        f_out.write("; Converted with bipolar derivations\n\n")
         f_out.write("[Common Infos]\n")
         f_out.write("Codepage=UTF-8\n")
         f_out.write(f"DataFile={os.path.basename(new_dat)}\n")
@@ -105,21 +115,20 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=Non
         f_out.write("DataFormat=BINARY\n")
         f_out.write("DataOrientation=MULTIPLEXED\n")
         f_out.write("DataType=TIMEDOMAIN\n")
-        f_out.write(f"NumberOfChannels={len(channels)}\n")
-        f_out.write(f"DataPoints={values.shape[0]}\n")  # after downsampling
-        f_out.write("SamplingInterval=4000\n")  # 1000 Hz → 250 Hz downsample
+        f_out.write(f"NumberOfChannels={len(bipolar_names)}\n")
+        f_out.write(f"DataPoints={n_samples}\n")
+        f_out.write("SamplingInterval=4000\n")  # 1000 Hz → 250 Hz
 
         f_out.write("\n[Binary Infos]\n")
         f_out.write("BinaryFormat=IEEE_FLOAT_32\n")
 
         f_out.write("\n[Channel Infos]\n")
-        for i, ch in enumerate(channels, start=1):
+        for i, ch in enumerate(bipolar_names, start=1):
             f_out.write(f"Ch{i}={ch},,,µV\n")
-
 
     print(f"Patched .vhdr → {new_vhdr}")
 
-    # ---- Step 3: Handle marker file ----
+    # ---- Step 5: Copy/patch .vmrk ----
     if vmrk_file and os.path.exists(vmrk_file):
         shutil.copy(vmrk_file, new_vmrk)
         print(f"Copied .vmrk → {new_vmrk}")
@@ -133,130 +142,6 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=Non
             f.write("; no markers\n")
             f.write("[Marker Data]\n")
         print(f"Created empty .vmrk → {new_vmrk}")
-
-    print(f"Patched .vhdr → {new_vhdr}")
-
-    # ---- Step 3: Copy .vmrk if it exists ----
-    if vmrk_file and new_vmrk:
-        shutil.copy(vmrk_file, new_vmrk)
-        print(f"Copied .vmrk → {new_vmrk}")
-    else:
-        print("No MarkerFile= found in .vhdr → skipping .vmrk copy")
-
-    return new_vhdr
-
-def down_sample_and_convert(vhdr_file, out_dir="converted"):
-    base_dir = os.path.dirname(vhdr_file)
-    base_name = os.path.splitext(os.path.basename(vhdr_file))[0]
-    out_prefix = base_name
-
-    # Ensure output directory exists
-    os.makedirs(out_dir, exist_ok=True)
-
-    # Parse .vhdr to find data and marker files
-    dat_file = None
-    vmrk_file = None
-    with open(vhdr_file, "r", encoding="utf-8", errors="ignore") as f:
-        for line in f:
-            if line.startswith("DataFile="):
-                dat_file = line.split("=", 1)[1].strip()
-            if line.startswith("MarkerFile="):
-                vmrk_file = line.split("=", 1)[1].strip()
-
-    if dat_file is None:
-        raise ValueError("Could not find DataFile= in .vhdr")
-
-    dat_file = os.path.join(base_dir, dat_file)
-    if vmrk_file is not None:
-        vmrk_file = os.path.join(base_dir, vmrk_file)
-
-    # Output paths
-    new_dat = os.path.join(out_dir, f"{out_prefix}.dat")
-    new_vhdr = os.path.join(out_dir, f"{out_prefix}.vhdr")
-    new_vmrk = os.path.join(out_dir, f"{out_prefix}.vmrk")
-
-    # ---- Step 1: Convert ASCII .dat to binary multiplexed ----
-    channels = []
-    data = []
-
-    with open(dat_file, "r") as f:
-        for line in f:
-            parts = line.strip().split()
-            if not parts:
-                continue
-            ch_name = parts[0]
-            if not os.path.exists(new_dat):
-                orig_values = np.array(parts[1:], dtype=np.float32)
-                n = len(orig_values) - (len(orig_values) % 4)
-                orig_values = orig_values[:n]
-                values = orig_values.reshape(-1, 4).mean(axis=1).astype(np.float32)
-                data.append(values)
-            channels.append(ch_name)
-
-    if not os.path.exists(new_dat):
-        data = np.vstack(data)
-        multiplexed = data.T.astype(np.float32).ravel(order="C")
-
-        with open(new_dat, "wb") as f:
-            f.write(multiplexed.tobytes())
-
-        print(f"Converted {len(channels)} channels × {data.shape[1]} samples")
-        print(f"Saved new binary .dat → {new_dat}")
-
-    # ---- Step 2: Copy and patch .vhdr ----
-    with open(vhdr_file, "r", encoding="utf-8", errors="ignore") as f_in:
-        vhdr_lines = f_in.readlines()
-
-    has_binary_infos = any(line.strip().startswith("[Binary Infos]") for line in vhdr_lines)
-
-    with open(new_vhdr, "w", encoding="utf-8") as f_out:
-        # --- Write the new .vhdr ---
-        f_out.write("Brain Vision Data Exchange Header File Version 2.0\n")
-        f_out.write("; Data created from history path: artamonow_night1_01/Raw Data\n\n")
-        f_out.write("[Common Infos]\n")
-        f_out.write("Codepage=UTF-8\n")
-        f_out.write(f"DataFile={os.path.basename(new_dat)}\n")
-        f_out.write(f"MarkerFile={os.path.basename(new_vmrk)}\n")
-        f_out.write("DataFormat=BINARY\n")
-        f_out.write("DataOrientation=MULTIPLEXED\n")
-        f_out.write("DataType=TIMEDOMAIN\n")
-        f_out.write(f"NumberOfChannels={len(channels)}\n")
-        f_out.write(f"DataPoints={values.shape[0]}\n")  # after downsampling
-        f_out.write("SamplingInterval=4000\n")  # 1000 Hz → 250 Hz downsample
-
-        f_out.write("\n[Binary Infos]\n")
-        f_out.write("BinaryFormat=IEEE_FLOAT_32\n")
-
-        f_out.write("\n[Channel Infos]\n")
-        for i, ch in enumerate(channels, start=1):
-            f_out.write(f"Ch{i}={ch},,,µV\n")
-
-
-    print(f"Patched .vhdr → {new_vhdr}")
-
-    # ---- Step 3: Handle marker file ----
-    if vmrk_file and os.path.exists(vmrk_file):
-        shutil.copy(vmrk_file, new_vmrk)
-        print(f"Copied .vmrk → {new_vmrk}")
-    else:
-        with open(new_vmrk, "w", encoding="utf-8") as f:
-            f.write("Brain Vision Data Exchange Marker File, Version 1.0\n")
-            f.write("; Created by converter\n")
-            f.write("[Common Infos]\n")
-            f.write("Codepage=UTF-8\n")
-            f.write("[Marker Infos]\n")
-            f.write("; no markers\n")
-            f.write("[Marker Data]\n")
-        print(f"Created empty .vmrk → {new_vmrk}")
-
-    print(f"Patched .vhdr → {new_vhdr}")
-
-    # ---- Step 3: Copy .vmrk if it exists ----
-    if vmrk_file and new_vmrk:
-        shutil.copy(vmrk_file, new_vmrk)
-        print(f"Copied .vmrk → {new_vmrk}")
-    else:
-        print("No MarkerFile= found in .vhdr → skipping .vmrk copy")
 
     return new_vhdr
 
