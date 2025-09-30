@@ -1,0 +1,12 @@
+### Configuration file used for all pre-processing scripts
+
+paths:
+  # general data path
+  data: 'C:/Users/andri/school/bio-informatics/internship/donders/data/human_test_data'
+  raw: 'pre_processing/input/raw_input'
+  anno: 'pre_processing/input/annotation_raw'
+  output: 'pre_processing/mat_files'
+
+variables:
+  wake_time: 1800
+  channels: ["Fpz-Cz", "Pz-Oz", "horizontal", "submental"]
