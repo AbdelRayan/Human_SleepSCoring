@@ -156,21 +156,24 @@ def channel_pca_multiband(raw, electrode_text, bands=None, n_components=2, stand
 
     # PCA
     pca = PCA(n_components=n_components)
-    Z = pca.fit_transform(X_std.T)  # shape: (n_timepoints, n_components)
-
-    # Identify top channels per component
+    pca.fit(X_std.T)  # shape: (n_timepoints, n_channels)
     pc_top_channels = []
     for i in range(n_components):
-        top_idx = np.argmax(np.abs(Z[:, i]))
+        top_idx = np.argmax(np.abs(pca.components_[i]))  # use components_, not Z
         pc_top_channels.append(valid_ch_names[top_idx])
-        print(f"PC{i+1} top channel: {valid_ch_names[top_idx]}")
+        print(f"PC{i + 1} top channel: {valid_ch_names[top_idx]}")
 
         # Optional: 3D plot
         fig = plt.figure(figsize=(8,6))
         ax = fig.add_subplot(111, projection='3d')
-        sc = ax.scatter(coords[:,0], coords[:,1], coords[:,2],
-                        c=Z[:, i], cmap='RdBu_r', s=100, edgecolors='k')
-        plt.colorbar(sc, ax=ax, label=f'PC{i+1} score')
+        sc = ax.scatter(
+            coords[:, 0], coords[:, 1], coords[:, 2],
+            c=pca.components_[i],  # channel loadings for this component
+            cmap='RdBu_r',
+            s=100,
+            edgecolors='k'
+        )
+        plt.colorbar(sc, ax=ax, label=f'PC{i + 1} loading')
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
