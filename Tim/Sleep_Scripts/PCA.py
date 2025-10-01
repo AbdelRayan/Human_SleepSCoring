@@ -51,7 +51,7 @@ def rank_channels_by_bandpower(raw, bands=None, n_top=5):
     bandpowers = {}
     for band, (fmin, fmax) in bands.items():
         mask = (freqs >= fmin) & (freqs <= fmax)
-        power_vals = np.trapz(psds[:, mask], freqs[mask], axis=1)
+        power_vals = np.trapezoid(psds[:, mask], freqs[mask], axis=1)
         bandpowers[band] = power_vals
 
         # Rank + print top channels
