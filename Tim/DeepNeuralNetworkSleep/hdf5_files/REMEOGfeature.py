@@ -115,29 +115,25 @@ print(f"length of EOG1: {len(EOG1)}", f"length of EOG1: {len(EOG2)}")
 
 features = eog_features(EOG1, EOG2, fs=250)
 
-epochs = len(EOG1/250/10)
-hypno_epochs = epochs
-times = np.arange(0, len(epochs))
-hypno_times = np.arange(0, len(hypno_epochs))
-fig, (ax1, ax3) = plt.subplots(3, 1, sharex=True, figsize = (28, 16))
+epochs = np.arange(len(features["EOG1"]))
+time_sec = (epochs / (250 * 10))  # adjust to your epoch duration / sampling
 
-# Plot data on each subplot
-ax1.plot(epochs[times], features["EOG1"][times], label='Index 1', color='black')
-ax1.plot(epochs[times], features["EOG2"][times], label='Index 2', color='blue')
-ax1.plot(epochs[times], features["EOG3"][times], label='Index 3', color='red')
+fig, (ax1, ax3) = plt.subplots(2, 1, sharex=True, figsize=(28, 16))
 
-ax3.plot(hypno_epochs[hypno_times], states[hypno_times], label='Mapped scores')
-
-# Add legends
-ax1.legend()
-ax3.legend()
-
-# Add titles
+# Plot EOG features
+ax1.plot(time_sec, features["EOG1"], label='EOG1', color='black')
+# ax1.plot(time_sec, features["EOG2"], label='EOG2', color='blue')
+# ax1.plot(time_sec, features["EOG3"], label='EOG3', color='red')
 ax1.set_title('EOG features')
+ax1.legend()
+
+# Plot sleep stages
+min_len = min(len(time_sec), len(states))
+ax3.plot(time_sec[:min_len], states[:min_len], label='Mapped scores')
 ax3.set_title('Mapped scores')
 ax3.set_yticks([0, 1, 2, 3, 4])
 ax3.invert_yaxis()
-# Adjust layout to avoid overlap
+ax3.legend()
+
 plt.tight_layout()
-# Show the plots
 plt.show()
