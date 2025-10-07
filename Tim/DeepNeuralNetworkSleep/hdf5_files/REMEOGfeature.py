@@ -115,15 +115,34 @@ print(f"length of EOG1: {len(EOG1)}", f"length of EOG1: {len(EOG2)}")
 
 features = eog_features(EOG1, EOG2, fs=250)
 
+features_norm = {}
+kernel = np.ones(5) / 5  # moving average kernel
+
+for key in ["EOG1", "EOG2", "EOG3"]:
+    arr = np.array(features[key])
+    # Normalize to 0-1
+    arr_norm = (arr - arr.min()) / (arr.max() - arr.min())
+    # Apply triple moving average smoothing
+    arr_smoothed = np.convolve(
+        np.convolve(
+            np.convolve(arr_norm, kernel, mode='same'),
+            kernel,
+            mode='same'
+        ),
+        kernel,
+        mode='same'
+    )
+    features_norm[key] = arr_smoothed
+
 epochs = np.arange(len(features["EOG1"]))
 time_sec = (epochs / (250 * 10))  # adjust to your epoch duration / sampling
 
 fig, (ax1, ax3) = plt.subplots(2, 1, sharex=True, figsize=(28, 16))
 
 # Plot EOG features
-ax1.plot(time_sec, features["EOG1"], label='EOG1', color='black')
-# ax1.plot(time_sec, features["EOG2"], label='EOG2', color='blue')
-# ax1.plot(time_sec, features["EOG3"], label='EOG3', color='red')
+ax1.plot(time_sec, features_norm["EOG1"], label='EOG1', color='black')
+ax1.plot(time_sec, features_norm["EOG2"], label='EOG2', color='blue')
+ax1.plot(time_sec, features_norm["EOG3"], label='EOG3', color='red')
 ax1.set_title('EOG features')
 ax1.legend()
 
