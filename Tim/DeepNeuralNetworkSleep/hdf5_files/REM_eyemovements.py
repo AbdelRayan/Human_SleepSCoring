@@ -25,23 +25,41 @@ scores_files = [
 score_list = [np.load(f) for f in scores_files]
 states = np.concatenate(score_list)
 
+# === KEEP EOG CHANNELS ===
 picks = ['EOG1', 'EOG2', 'EOG1-EOG2']
 raw.pick_channels(picks)
 
+# === FIND REM EPOCHS ===
 rem_indices = np.where(states == 4)[0]
+print(f"Found {len(rem_indices)} REM epochs")
 
-rem_mask = np.zeros(len(raw.times), dtype=bool)
+if len(rem_indices) == 0:
+    raise ValueError("No REM epochs found in hypnogram.")
+
+# === EXTRACT AND CONCATENATE REM SEGMENTS ===
+rem_segments = []
 for idx in rem_indices:
-    start = idx * samples_per_epoch
-    stop = start + samples_per_epoch
-    if stop > len(rem_mask):
-        stop = len(rem_mask)
-    rem_mask[start:stop] = True
+    start = idx * epoch_length
+    stop = (idx + 1) * epoch_length
 
-rem_raw = raw.copy().crop(tmin=0, tmax=len(rem_mask)/fs)
-rem_data = rem_raw.get_data()
-rem_data = rem_data[:, rem_mask]
-rem_raw = mne.io.RawArray(rem_data, rem_raw.info)
+    if start >= raw.times[-1]:  # outside data range
+        continue
+    stop = min(stop, raw.times[-1])
+
+    # Crop segment and store
+    rem_seg = raw.copy().crop(tmin=start, tmax=stop)
+    rem_segments.append(rem_seg)
+
+if not rem_segments:
+    raise ValueError("No valid REM segments within data duration.")
+
+# Concatenate all REM segments together
+rem_raw = mne.concatenate_raws(rem_segments, preload=True)
+rem_raw.set_channel_types({
+    'EOG1-EOG2':'eog',
+    'EOG1':'eog',
+    'EOG2':'eog'
+})
 
 print(rem_raw)
-rem_raw.plot(scalings='auto', title='REM segments: EOG1, EOG2, EOG1-EOG2')
+rem_raw.plot(scalings=dict(eog=1e-4), duration=30, title='REM-only EOG channels (EOG1, EOG2, EOG1-EOG2)', block=True)
