@@ -86,6 +86,18 @@ def feature_b(EOG1, EOG2, epoch_length, fs):
     print(b_features)
     return b_features
 
+def feature_c(EOG1, EOG2, epoch_length, fs):
+    c_features = np.array([])
+    b, a = butter(4, [0.3 / (0.5 * fs), 0.45 / (0.5 * fs)], btype='band')
+    EOG1 = filtfilt(b, a, EOG1)
+    EOG2 = filtfilt(b, a, EOG2)
+    cross_cor_val = cross_correlation(EOG1, EOG2, epoch_length, fs, 0)
+    auto_corr_val = auto_correlation_slope(EOG1, epoch_length, fs)
+    for count, ac in enumerate(auto_corr_val):
+        feature = (1-ac) * cross_cor_val[count]
+        c_features = np.append(c_features, feature)
+    return c_features
+
 
 if __name__ == "__main__":
     fs = 250  # EEG sampling frequency
@@ -131,7 +143,7 @@ if __name__ == "__main__":
     print(f"length of EOG1: {len(EOG1)}", f"length of EOG1: {len(EOG2)}")
 
     rem_features = rem_feature(EOG1, EOG2, epoch_length, fs)
-    b_features = feature_b(EOG1, EOG2, epoch_length, fs)
+    b_features = feature_c(EOG1, EOG2, epoch_length, fs)
 
     print(len(rem_features))
 

@@ -62,4 +62,64 @@ rem_raw.set_channel_types({
 })
 
 print(rem_raw)
-rem_raw.plot(scalings=dict(eog=1e-4), duration=30, title='REM-only EOG channels (EOG1, EOG2, EOG1-EOG2)', block=True)
+# rem_raw.plot(scalings=dict(eog=1e-4), duration=30, title='REM-only EOG channels (EOG1, EOG2, EOG1-EOG2)', block=True)
+
+tmin = 30
+tmax = tmin + 30
+sfreq = rem_raw.info['sfreq']
+data, times = rem_raw[:, int(tmin * sfreq):int(tmax * sfreq)]
+
+# Shift time to start at 0
+times = times - tmin
+
+# Scale to µV
+data = data * 1e6
+
+plt.figure(figsize=(12, 6))
+
+# Vertical spacing between channels
+offset = 100
+yticks = []
+scale = 0.5
+data_scaled = data * scale  # data is in µV
+for idx, ch_name in enumerate(raw.info['ch_names']):
+    ch_offset = idx * offset
+    plt.plot(
+        times,
+        data_scaled[idx] + ch_offset,
+        linewidth=0.4,
+        color="black"
+    )
+    yticks.append(ch_offset)
+
+# Label y-axis with channel names
+plt.yticks(yticks, rem_raw.info['ch_names'])
+plt.xlabel("Time (s)")
+plt.ylabel("Channels")
+plt.title(f"Rem eye movements 60-90s")
+
+# --- Add scale bars (50 µV) ---
+scalebar_height = 50 * scale  # µV
+scalebar_x = 1  # 1 s into the fragment
+
+for ch_offset in yticks:  # one bar per channel
+    plt.plot([scalebar_x, scalebar_x],
+             [ch_offset, ch_offset + scalebar_height],
+             color="red", linewidth=2)
+    plt.text(scalebar_x + 0.2,
+             ch_offset + scalebar_height / 2,
+             f"{scalebar_height} µV",
+             va="center", ha="left", color="red")
+
+# Top channel
+scalebar_y_top = yticks[-1]
+plt.plot([scalebar_x, scalebar_x], [scalebar_y_top, scalebar_y_top + scalebar_height],
+         color="red", linewidth=2)
+plt.text(scalebar_x + 0.2, scalebar_y_top + scalebar_height / 2,
+         f"{scalebar_height} µV", va="center", ha="left", color="red")
+
+plt.xlim(0, tmax - tmin)  # set x-axis from 0 to 30
+plt.tight_layout()
+plt.savefig("Rem_eye_movements_60-90.pdf", dpi=300, format="pdf")
+plt.show(block=True)
+plt.close()
