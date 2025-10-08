@@ -32,7 +32,7 @@ def cross_correlation(EOG1, EOG2, epoch_length, fs, lag=0):
 
     return cross_cor_epochs
 
-def auto_correlation(EOG, epoch_length, fs):
+def auto_correlation_slope(EOG, epoch_length, fs):
     samples = int(epoch_length * fs)
     slopes = []
 
@@ -51,18 +51,39 @@ def auto_correlation(EOG, epoch_length, fs):
 
     return slopes
 
+def auto_correlation(EOG, epoch_length, fs):
+    samples = int(epoch_length * fs)
+    auto_corr = np.array([])
+    for i in range(0, len(EOG) - len(EOG) % samples, samples):
+        epoch = EOG[i:i + samples]
+        squared = np.sum(epoch*epoch)
+        auto_corr = np.append(auto_corr, squared)
+    return(auto_corr)
+
+
 def rem_feature(EOG1, EOG2, epoch_length, fs):
     rem_features = np.array([])
     b, a = butter(4, [0.3 / (0.5 * fs), 35 / (0.5 * fs)], btype='band')
     EOG1 = filtfilt(b, a, EOG1)
     EOG2 = filtfilt(b, a, EOG2)
     cross_cor_val = cross_correlation(EOG1, EOG2, epoch_length, fs, 0)
-    auto_slope = auto_correlation(EOG1, epoch_length, fs)
+    auto_slope = auto_correlation_slope(EOG1, epoch_length, fs)
     for count, slope in enumerate(auto_slope):
         eog_feature = (1/slope)*np.sign(cross_cor_val[count])
         rem_features = np.append(rem_features, eog_feature)
     return rem_features
 
+def feature_b(EOG1, EOG2, epoch_length, fs):
+    b_features = np.array([])
+    b, a = butter(4, [0.1 / (0.5 * fs), 0.45 / (0.5 * fs)], btype='band')
+    EOG1 = filtfilt(b, a, EOG1)
+    EOG2 = filtfilt(b, a, EOG2)
+    cross_cor_val = cross_correlation(EOG1, EOG2, epoch_length, fs, 0)
+    auto_corr_val = auto_correlation(EOG1, epoch_length, fs)
+    for count, ac in enumerate(auto_corr_val):
+        feature = (np.mean(np.abs(ac))) * cross_cor_val[count]
+        b_features = np.append(b_features, feature)
+    return b_features
 
 
 if __name__ == "__main__":
@@ -143,13 +164,10 @@ if __name__ == "__main__":
     ax1.legend(fontsize=12)
     ax2.legend(fontsize=12)
 
-    # Overall title
-    fig.suptitle("REM EOG Feature Visualization (REM Under Wake)", fontsize=18, y=0.95)
+    fig.suptitle("REM EOG Feature Visualization", fontsize=18, y=0.95)
 
-    # Tight layout
     fig.tight_layout(rect=[0, 0, 1, 0.96])
 
-    # Save figure
     fig.savefig('rem_feature_reordered.svg', format="svg")
 
     plt.show()
