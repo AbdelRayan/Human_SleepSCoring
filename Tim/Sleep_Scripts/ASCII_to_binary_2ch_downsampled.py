@@ -161,7 +161,7 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=Non
 
     return new_vhdr
 
-def convert_brainvision_ascii_average(vhdr_file, out_dir="converted", channel_select=None):
+def convert_brainvision_ascii_average(vhdr_file, out_dir="converted"):
     """
     Convert BrainVision ASCII .dat (vectorized, channels in rows)
     to binary multiplexed format and patch .vhdr accordingly.
@@ -227,28 +227,27 @@ def convert_brainvision_ascii_average(vhdr_file, out_dir="converted", channel_se
             values = np.array(parts[1:], dtype=np.float32)
             n = len(values) - (len(values) % 4)
             values = values[:n].reshape(-1, 4).mean(axis=1).astype(np.float32)
-            if all_channels[letters]:
-                all_channels[letters].append(values)
+            if 'EOG' in ch_name or 'EMG' in ch_name:
+                all_channels[ch_name] = values
             else:
-                all_channels[letters] = values
+                if letters in all_channels:
+                    all_channels[letters].append(values)
+                else:
+                    all_channels[letters] = values
+
+    for channel in all_channels.keys():
+        all_channels[channel] = [sum(col) / len(col) for col in zip(*all_channels[channel])]
 
 
     n_samples = len(next(iter(all_channels.values())))
 
-    # ---- Step 2: Build bipolar derivations ----
     bipolar_data = []
     bipolar_names = []
 
-    # EEG channels vs Cz
-    if channel_select is not None and "Cz" in all_channels:
-        for ch in channel_select :
-            if ch in all_channels and ch not in ['TR01', 'TL01', 'TR10', 'TL10']:
-                new_name = f"{ch}-Cz"
-                bipolar_data.append(all_channels[ch] - all_channels["Cz"])
-                bipolar_names.append(new_name)
-            elif ch in ['TR01', 'TL01', 'TR10', 'TL10']:
-                bipolar_data.append(all_channels[ch])
-                bipolar_names.append(ch)
+    for ch in all_channels.keys():
+        if 'EOG' not in ch or 'EMG' not in ch:
+            bipolar_data.append(all_channels[ch])
+            bipolar_names.append(ch)
 
     # EOG
     if "EOG1" in all_channels and "EOG2" in all_channels:
@@ -259,10 +258,6 @@ def convert_brainvision_ascii_average(vhdr_file, out_dir="converted", channel_se
         bipolar_names.append("EOG1")
         bipolar_names.append("EOG2")
 
-    # EMG
-    # if "EMG1" in all_channels and "EMG2" in all_channels:
-    #     bipolar_data.append(all_channels["EMG1"] - all_channels["EMG2"])
-    #     bipolar_names.append("EMG1-EMG2")
     if "EMG1" in all_channels and "EMG2" in all_channels:
         bipolar_data.append(all_channels["EMG1"] - all_channels["EMG2"])
         bipolar_data.append(all_channels["EMG1"])
