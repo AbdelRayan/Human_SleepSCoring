@@ -223,20 +223,30 @@ def convert_brainvision_ascii_average(vhdr_file, out_dir="converted"):
             if not parts:
                 continue
             ch_name = parts[0]
-            letters, numbers = re.match(r"([A-Za-z]+)(\d+)", ch_name).groups()
+            match = re.match(r"([A-Za-z]+)(\d+)", ch_name)
+            if match:
+                letters, numbers = match.groups()
+            else:
+                print(f"Skipping channel {ch_name} (does not match letter+digit pattern)")
+                continue
             values = np.array(parts[1:], dtype=np.float32)
             n = len(values) - (len(values) % 4)
             values = values[:n].reshape(-1, 4).mean(axis=1).astype(np.float32)
             if 'EOG' in ch_name or 'EMG' in ch_name:
                 all_channels[ch_name] = values
             else:
+                print(f"Adding {letters}")
                 if letters in all_channels:
-                    all_channels[letters].append(values)
+                    all_channels[letters] = np.vstack([all_channels[letters], values])
                 else:
                     all_channels[letters] = values
 
-    for channel in all_channels.keys():
-        all_channels[channel] = [sum(col) / len(col) for col in zip(*all_channels[channel])]
+    for channel, arr in all_channels.items():
+        print(f"Averaging {channel}")
+        if arr.ndim > 1:
+            all_channels[channel] = np.mean(arr, axis=0)
+        else:
+            all_channels[channel] = arr
 
 
     n_samples = len(next(iter(all_channels.values())))
@@ -252,19 +262,11 @@ def convert_brainvision_ascii_average(vhdr_file, out_dir="converted"):
     # EOG
     if "EOG1" in all_channels and "EOG2" in all_channels:
         bipolar_data.append(all_channels["EOG1"] - all_channels["EOG2"])
-        bipolar_data.append(all_channels["EOG1"])
-        bipolar_data.append(all_channels["EOG2"])
         bipolar_names.append("EOG1-EOG2")
-        bipolar_names.append("EOG1")
-        bipolar_names.append("EOG2")
 
     if "EMG1" in all_channels and "EMG2" in all_channels:
         bipolar_data.append(all_channels["EMG1"] - all_channels["EMG2"])
-        bipolar_data.append(all_channels["EMG1"])
-        bipolar_data.append(all_channels["EMG2"])
         bipolar_names.append("EMG1-EMG2")
-        bipolar_names.append("EMG1")
-        bipolar_names.append("EMG2")
 
     bipolar_data = np.vstack(bipolar_data)
 
