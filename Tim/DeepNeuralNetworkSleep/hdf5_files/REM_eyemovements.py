@@ -64,7 +64,7 @@ rem_raw.set_channel_types({
 print(rem_raw)
 # rem_raw.plot(scalings=dict(eog=1e-4), duration=30, title='REM-only EOG channels (EOG1, EOG2, EOG1-EOG2)', block=True)
 
-tmin = 30
+tmin = 60
 tmax = tmin + 30
 sfreq = rem_raw.info['sfreq']
 data, times = rem_raw[:, int(tmin * sfreq):int(tmax * sfreq)]
