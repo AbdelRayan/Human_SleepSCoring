@@ -138,6 +138,8 @@ if __name__ == "__main__":
     EMG = EMG[:len(EMG) // (epoch_length * fs) * (epoch_length * fs)]
     EMG = EMG.reshape(-1, (epoch_length * fs))
     EMG = EMG.sum(axis=1)
+    EOG1 = wei_normalizing(EOG1)
+    EOG2 = wei_normalizing(EOG2)
 
     EOG1, EOG2 = np.ravel(raw.get_data(picks='EOG1')[0]), np.ravel(raw.get_data(picks='EOG2')[0])
     print(f"length of EOG1: {len(EOG1)}", f"length of EOG1: {len(EOG2)}")
