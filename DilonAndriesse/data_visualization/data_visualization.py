@@ -166,13 +166,13 @@ def hypnogram_vis(cropped_raw, sleep_events, image_path):
 
     # plot hypnogram
     fig, ax = plt.subplots(figsize=(20, 5))
-    yasa.plot_hypnogram(raw_array, sf_hypno=float(1/30), ax=ax)
+    yasa.plot_hypnogram(raw_array, sf_hypno=float(1/10), ax=ax)
     plt.savefig(os.path.join(image_path, "hypnogram.svg"), format="svg")
 
     # upsample the annotation to the data
     hypno_up = yasa.hypno_upsample_to_data(
         raw_array, 
-        sf_hypno=float(1/30), 
+        sf_hypno=float(1/10), 
         data=cropped_raw
         )
     # plot spectogram
@@ -220,7 +220,7 @@ def calc_bandpower(cropped_raw, hypno_up, bp_output, image_path):
 
     for band, i in zip(power_bands, range(len(power_bands))):
         for key, value in state_mask.items():
-            filename = f"temp_imgs/{band}_{value}_topoplot.png"
+            filename = f"{image_path}/{band}_{value}_topoplot.png"
             fig = yasa.topoplot(bandpower.xs(key)[band], title=value, cbar_title="Spectral powers")
             fig.savefig(filename, dpi=600, bbox_inches="tight")
             plt.close(fig)
