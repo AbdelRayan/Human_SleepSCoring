@@ -2,7 +2,7 @@ import mne
 import numpy as np
 
 
-def read_raw_psg(psg_file, channels):
+def read_raw_psg(psg_file):
     """ 
     Read the raw input PSG.edf file and extract the channels to be used.
 
@@ -17,9 +17,7 @@ def read_raw_psg(psg_file, channels):
         # Tries to infer channel types from names
         infer_types=True,
         # load data in memory for data manipulation and faster indexing
-        preload=True,
-        # exclude unused channels
-        include=channels
+        preload=True
     )
 
     return raw
