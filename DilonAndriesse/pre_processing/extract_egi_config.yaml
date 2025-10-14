@@ -1,0 +1,24 @@
+### Configuration file used for all pre-processing scripts
+
+paths:
+  # general data path
+  data: 'C:\Users\andri\school\bio-informatics\internship\donders\data\human_test_data'
+  egi: 'new_dataset\EGI'
+  edf: 'new_dataset\edf'
+  anno_n1: 'new_dataset\HPN\hpn_files_n1'
+  anno_n2: 'new_dataset\HPN\hpn_files_n2'
+  output: 'pre_processing\mat_files'
+
+variables:
+  wake_time: 1800
+  chunk_time: 300
+  emg_channels: ["240", "243"]
+  power_bands: 
+    - [0, 0.5, "Noise"]
+    - [0.5, 5, "Delta"]
+    - [6, 10, "Theta"]
+    - [11, 17, "Sigma"]
+    - [9, 12, "Alpha"]
+    - [22, 30, "Beta"]
+    - [35, 45, "Gamma"]
+    - [0, 30, "Total"]
