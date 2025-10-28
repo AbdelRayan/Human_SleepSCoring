@@ -3,6 +3,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.signal import find_peaks
 from scipy.signal import butter, filtfilt
+from scipy.signal import hilbert
 
 def wei_normalizing(data):
     data = np.array(data)
@@ -142,11 +143,18 @@ if __name__ == "__main__":
 
     EOG1, EOG2 = np.ravel(raw.get_data(picks='EOG1')[0]), np.ravel(raw.get_data(picks='EOG2')[0])
     print(f"length of EOG1: {len(EOG1)}", f"length of EOG1: {len(EOG2)}")
-    EOG1 = wei_normalizing(EOG1)
-    EOG2 = wei_normalizing(EOG2)
+    # EOG1 = wei_normalizing(EOG1)
+    # EOG2 = wei_normalizing(EOG2)
+    # EOG1 = np.convolve(np.convolve(np.convolve(EOG1, np.ones(5)/5, mode='same'),
+    #                                        np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
+    # EOG2 = np.convolve(np.convolve(np.convolve(EOG2, np.ones(5)/5, mode='same'),
+    #                                        np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
 
-    rem_features = rem_feature(EOG1, EOG2, epoch_length, fs)
-    rem_features = wei_normalizing(np.log(rem_features))
+    rem_features = abs(rem_feature(EOG1, EOG2, epoch_length, fs))
+    rem_features = wei_normalizing(rem_features)
+    rem_features = np.convolve(np.convolve(np.convolve(rem_features, np.ones(5)/5, mode='same'), np.ones(5)/5,
+                                           mode='same'), np.ones(5)/5, mode='same')
+
     b_features = feature_c(EOG1, EOG2, epoch_length, fs)
 
     print(len(rem_features))
