@@ -15,13 +15,18 @@ import h5py
 from scipy.stats import mode
 from scipy.io import loadmat
 import os
+import sys
 
 #temp
 import multiprocessing as mp
 from joblib import Parallel, delayed
 
+# get parent directory path to be able to import from parallel directory
+module_path = os.path.abspath(os.path.join('..'))
+if module_path not in sys.path:
+    sys.path.append(module_path)
 
-from hdf5_files.computing_features import psd_multitaper, wei_normalizing, index_W, index_N, index_R, Index_1, Index_2, Index_3, Index_4
+from hdf5_files.computing_features import psd_multitaper, wei_normalizing, index_W, index_N, index_R, Index_1, Index_2, Index_3, Index_4, calc_aperiodic_fit, calc_dfa, calc_mse
 from hdf5_files.Artefacts_Detection import removeArtefacts, artefact_epochs
 
 def getNewFeatures(raw_fpz, raw_pz, raw_emg, raw_eog, states, fs, epoch_length):
@@ -132,8 +137,18 @@ def getNewFeatures(raw_fpz, raw_pz, raw_emg, raw_eog, states, fs, epoch_length):
   index_3_smoothed = np.convolve(np.convolve(np.convolve(index_3_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
   index_4_smoothed = np.convolve(np.convolve(np.convolve(index_4_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
 
+  window_size = epoch_length * fs
+  # aperiodic = calc_aperiodic_fit(raw_fpz, window_size, epoch_length, fs)
+  # aperiodic = np.array(aperiodic)
+  # dfa = calc_dfa(raw_fpz, window_size, window_size, fs)
+  # dfa = np.array(dfa)
+  # mse = calc_mse(raw_fpz, window_size, window_size, fs)
+  # mse = np.array(mse)
   # Create matrix
   new_features = np.column_stack((index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed))
+  #new_features = np.column_stack((index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed, aperiodic, dfa, mse))
+  
+  
   return new_features, mapped_scores
 
 def prepare_for_hdf5(recording, fs, files_path, epoch_length):
@@ -162,7 +177,7 @@ def prepare_for_hdf5(recording, fs, files_path, epoch_length):
     elif 'EOG' in i:
       eog = i
     elif 'states' in i:
-      states = i
+      sleep_states = i
 
   #print(recording)
   recording_name = str(fpz[:-4].split("_")[0])     # Group name 
@@ -201,8 +216,8 @@ def prepare_for_hdf5(recording, fs, files_path, epoch_length):
   eog_data = eog_data[8*fs:]
 
 
-  sleep_scoring = loadmat(os.path.join(files_path, states))
-  states = sleep_scoring['States'][0][7:]
+  sleep_scoring = loadmat(os.path.join(files_path, sleep_states))
+  states = sleep_scoring['states'][0][7:]
   print(f"Size of raw fpz-data: {len(fpz_data)}")
   print(f"Size of raw states: {len(states)}")
 
@@ -212,7 +227,6 @@ def prepare_for_hdf5(recording, fs, files_path, epoch_length):
   Features = a[0]
   Mapped_scores = a[1]
   print(f"Size of epoched features: {len(Features)}")
-  print(Features)
   print(f"Size of epoched states: {len(Mapped_scores)}")
 
   # Add the artefact epochs to mapped scores

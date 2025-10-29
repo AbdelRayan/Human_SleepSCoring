@@ -1,5 +1,11 @@
 import numpy as np
 import mne.time_frequency
+from scipy.signal import welch
+from specparam import SpectralModel
+from joblib import Parallel, delayed
+from scipy.signal import savgol_filter
+import EntropyHub as EH
+from neurodsp.aperiodic import compute_fluctuations
 
 def psd_multitaper(lfp_data, fs, frequency_band, window_length):
     """
@@ -114,3 +120,105 @@ def wei_normalizing(data):
   normalized_data = np.clip(normalized_data, 0.05, 1) # set to 0.05 all negative values, set to 1 all values greater than 1
 
   return normalized_data
+
+
+def aperiodic_fit(window_data, fs):
+    freqs, psd = welch(window_data, fs=fs, nperseg=4096)
+
+    mask = (freqs <= 75)
+    freqs, psd = freqs[mask], psd[mask]
+
+    fm = SpectralModel(min_peak_height=0.05, aperiodic_mode='knee', verbose=False)
+    fm.fit(freqs, psd)
+    aperiodic = fm.get_params('aperiodic')[1]
+
+    return aperiodic
+
+
+def calc_aperiodic_fit(data, window_size, epoch_length, fs):
+  window_data = []
+
+  num_windows = len(data) // window_size
+  time_stamps = np.arange(num_windows) * epoch_length
+
+  # calculate windows
+  for i in range(num_windows):
+      start, end = i * window_size, (i + 1) * window_size
+      window_data.append(data[start:end])
+
+  aperiodic_exponents = Parallel(n_jobs=-1)(delayed(aperiodic_fit)(window, fs) for window in window_data)
+
+  # Thresholding to remove outliers
+  threshold_min = np.percentile(aperiodic_exponents, 2)
+  threshold_max = np.percentile(aperiodic_exponents, 98)
+
+  valid_indices = (aperiodic_exponents >= threshold_min) & (aperiodic_exponents <= threshold_max)
+
+  filtered_exponents = aperiodic_exponents[valid_indices]
+  filtered_timestamps = time_stamps[valid_indices]
+
+  #filtered_exponents_z = (filtered_exponents - np.mean(filtered_exponents)) / np.std(filtered_exponents)
+  window_length = 11 if len(filtered_exponents) >= 11 else len(filtered_exponents) | 1  # ensure it's odd
+  polyorder = 4
+
+  smoothed_exponents = savgol_filter(filtered_exponents, window_length=window_length, polyorder=polyorder)
+
+  normalized_exponents = 2 * ((smoothed_exponents - min(smoothed_exponents)) /(max(smoothed_exponents) - min(smoothed_exponents))) - 1
+
+  return valid_indices, normalized_exponents
+
+
+def calc_dfa(data, window_size, step_size, fs):
+  num_windows = (len(data) - window_size) // step_size + 1
+
+  dfa_exponents = []
+  time_stamps = []
+
+  for i in range(num_windows):
+      start = i * step_size
+      end = start + window_size
+      segment = data[start:end]
+
+      _, _, exp_window = compute_fluctuations(segment, fs, n_scales=10,
+                                              min_scale=0.05, max_scale=4.0)
+
+      dfa_exponents.append(exp_window)
+      time_stamps.append((start + end) / 2 / fs)
+
+  dfa_exponents = np.array(dfa_exponents)
+  window_length = 11 if len(dfa_exponents) >= 11 else len(dfa_exponents) | 1  # ensure it's odd
+  polyorder = 4
+
+  smoothed_dfa = savgol_filter(dfa_exponents, window_length=window_length, polyorder=polyorder)
+  normalized_dfa = 2 * ((smoothed_dfa - min(smoothed_dfa)) /(max(smoothed_dfa) - min(smoothed_dfa))) - 1
+
+  return normalized_dfa
+
+
+def calc_mse(data, window_size, step_size, fs):
+  Mobj = EH.MSobject('IncrEn', m=2, R=3, Norm=True)
+
+  num_windows = (len(data) - window_size) // step_size + 1
+
+  mse_values = []
+  time_stamps_mse = []
+
+  for i in range(num_windows):
+      start = i * step_size
+      end = start + window_size
+      segment = data[start:end]
+
+      MSx, _ = EH.MSEn(segment, Mobj, Scales=2, Methodx='modified')
+
+      mse_values.append(np.mean(MSx))
+      time_stamps_mse.append((start + end) / 2 / fs)
+
+  mse_values = np.array(mse_values)
+  time_stamps_mse = np.array(time_stamps_mse)
+  window_length = 11 if len(mse_values) >= 11 else len(mse_values) | 1  # ensure it's odd
+  polyorder = 4
+
+  smoothed_mse = savgol_filter(mse_values, window_length=window_length, polyorder=polyorder)
+  normalized_mse = 2 * ((smoothed_mse - min(smoothed_mse)) /(max(smoothed_mse) - min(smoothed_mse))) - 1
+
+  return normalized_mse
