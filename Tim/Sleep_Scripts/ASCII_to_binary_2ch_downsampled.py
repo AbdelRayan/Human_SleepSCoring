@@ -87,11 +87,11 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=Non
                 bipolar_names.append(new_name)
             elif ch in ['TL01', 'TR10']:
                 if ch == "TL01":
-                    bipolar_data.append(all_channels[ch] - all_channels["TL02"])
-                    bipolar_names.append("TL01-TL02")
+                    bipolar_data.append(all_channels[ch])
+                    bipolar_names.append("TL01")
                 else:
-                    bipolar_data.append(all_channels[ch] - all_channels["TR09"])
-                    bipolar_names.append("TR10-TR09")
+                    bipolar_data.append(all_channels[ch])
+                    bipolar_names.append("TR10")
 
     # EOG
     if "EOG1" in all_channels and "EOG2" in all_channels:
