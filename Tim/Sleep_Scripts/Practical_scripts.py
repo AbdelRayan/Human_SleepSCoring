@@ -87,9 +87,11 @@ def link_sections(directory, source):
     """
     nights = []
     for data in os.listdir(directory):
-        if 'night' in data and 'vhdr' in data:
+        if 'night' in data and 'vhdr' in data and "brainvision" in source:
             nights.append(data)
-    night_dict = {}
+        elif 'night' in data and 'edf' in data and 'edf' in source:
+            nights.append(data)
+        night_dict = {}
     for night in nights:
         subject, night, number = night.split("_")
         if night not in night_dict:
@@ -103,7 +105,7 @@ def link_sections(directory, source):
             raw_list = [mne.io.read_raw_brainvision(f, preload=True) for f in files]
             extension = '.dat'
         elif source.upper() == 'EDF':
-            raw_list = [mne.io.read_raw_edf(file, preload=True) for f in files]
+            raw_list = [mne.io.read_raw_edf(f, preload=True) for f in files]
             extension = '.edf'
         else:
             print("invalid source selected, choose either BRAINVISION or EDF")
@@ -115,5 +117,5 @@ def link_sections(directory, source):
         raw.export(output, fmt=source.lower())
 
 if __name__ == '__main__':
-    file = "D:/converted_sleep_data/2"
-    link_sections(file, 'brainvision')
+    file = "C:/EEG_Data_stage/2/iEEG/converted_intra/edf_files"
+    link_sections(file, 'edf')

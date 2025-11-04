@@ -92,6 +92,11 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=Non
                 else:
                     bipolar_data.append(all_channels[ch])
                     bipolar_names.append("TR10")
+    else:
+        for channel in all_channels:
+            if channel not in ["Cb1", "Cb2", "EKG1", "EKG2", "EOG1", "EOG2", "EMG1", "EMG2"]:
+                bipolar_data.append(all_channels[channel])
+                bipolar_names.append(channel)
 
     # EOG
     if "EOG1" in all_channels and "EOG2" in all_channels:
@@ -102,10 +107,6 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=Non
         bipolar_names.append("EOG1")
         bipolar_names.append("EOG2")
 
-    # EMG
-    # if "EMG1" in all_channels and "EMG2" in all_channels:
-    #     bipolar_data.append(all_channels["EMG1"] - all_channels["EMG2"])
-    #     bipolar_names.append("EMG1-EMG2")
     if "EMG1" in all_channels and "EMG2" in all_channels:
         bipolar_data.append(all_channels["EMG1"] - all_channels["EMG2"])
         bipolar_data.append(all_channels["EMG1"])
