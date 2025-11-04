@@ -1,6 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import butter, filtfilt, decimate, find_peaks
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+import pandas as pd
 
 state_labels = ['Wake', 'N1', 'N2', 'N3', 'REM']
 
@@ -121,7 +124,13 @@ def rem_feature(EOG1, EOG2, epoch_length, fs,
     return feats
 
 def index_N(delta, alpha, EMG, EOG1, EOG2, epoch_length, fs):
-    eog_features = N_feature(EOG1, EOG2, epoch_length, fs)
+    eog_features = wei_normalizing(N_feature(EOG1, EOG2, epoch_length, fs))
+    np.convolve(
+        np.convolve(
+            np.convolve(eog_features, np.ones(5) / 5, mode='same'),
+            np.ones(5) / 5, mode='same'),
+        np.ones(5) / 5, mode='same'
+    )
     alt_index_n = np.array([])
     for i in range(len(delta)):
         value = (eog_features[i] * delta[i]) / (alpha[i] * EMG[i])
@@ -131,6 +140,12 @@ def index_N(delta, alpha, EMG, EOG1, EOG2, epoch_length, fs):
 
 def index_R(delta, sigma, EMG, EOG1, EOG2, epoch_length, fs):
     eog_features = wei_normalizing(rem_feature(EOG1, EOG2, epoch_length, fs))
+    eog_features = np.convolve(
+        np.convolve(
+            np.convolve(eog_features, np.ones(5)/5, mode='same'),
+            np.ones(5)/5, mode='same'),
+        np.ones(5)/5, mode='same'
+    )
     alt_index_r = np.array([])
     for i in range(len(delta)):
         value = (eog_features[i] * eog_features[i]) / (EMG[i] * EMG[i] * delta[i] * sigma[i])
@@ -189,9 +204,9 @@ def normalised_powers(EMG_norm, noise_norm, delta_norm, theta_norm, sigma_norm, 
     # Show the plots
     plt.show()
 
-def normalised_EMG(epochs, EMG_norm, output_dir):
+def normalised_EMG(EMG_norm, output_dir):
     fig, (ax1) = plt.subplots(1, 1, sharex=True, figsize=(28, 5))
-
+    epochs = np.arange(len(EMG_norm))
     # Plot data on each subplot
     ax1.plot(epochs, EMG_norm, label='', color='black')
 
@@ -304,7 +319,6 @@ def smooth_and_norm(x):
         x_norm = np.convolve(x_norm, kernel, mode='same')
     return x_norm
 
-
 def index_barplot(index_n, index_r, index_w, mapped_scores, output_dir):
 
     # Preprocess indices
@@ -368,5 +382,64 @@ def index_barplot(index_n, index_r, index_w, mapped_scores, output_dir):
     plt.tight_layout()
     plt.savefig(f'{output_dir}/all_new_indices_vs_wei_bar.svg', format='svg')
     plt.show()
+
+def index_pca(index_n, mapped_scores_old, index_r, index_w, output_dir):
+    index_w_smoothed = smooth_and_norm(index_w)
+    index_r_smoothed = smooth_and_norm(index_r)
+    index_n_smoothed = smooth_and_norm(index_n)
+    difference = len(index_n_smoothed) - len(mapped_scores_old)
+    arrays = [
+        index_w_smoothed[:-difference],
+        index_r_smoothed[:-difference],
+        index_n_smoothed[:-difference],
+        mapped_scores_old
+    ]
+    # print(f'epochs: {X.shape}')   # rows = number of samples (dots), columns = features
+    stage_map = {
+        0.0: "wake",
+        1.0: "n1",
+        2.0: "n2",
+        3.0: "n3",
+        4.0: "rem"
+    }
+    array = np.column_stack(arrays)
+    df = pd.DataFrame(array)
+
+    x = df[[0, 1, 2]]
+    y = df[3]
+
+    scaler = StandardScaler()
+    X = x.to_numpy().astype(float)
+
+    # Replace NaNs with 0 (or another strategy like forward-fill)
+    X = np.nan_to_num(X, nan=0.0)
+    X_scaled = scaler.fit_transform(X)
+
+    pca = PCA(n_components=3)
+    X_pca = pca.fit_transform(X_scaled)
+
+    print(f'PCA data points:{X_pca.shape}')
+    # Colorblind-friendly palette
+    colors = ['#0072B2', '#E69F00', '#D55E00', '#CC79A7', '#F0E442']
+
+    plt.figure(figsize=(8, 6))
+    for i, label in enumerate(np.unique(y)):
+        stage_name = stage_map.get(label, str(label))  # fallback in case of unexpected value
+        plt.scatter(
+            X_pca[y == label, 0],
+            X_pca[y == label, 1],
+            label=stage_name,
+            color=colors[i % len(colors)],
+            alpha=0.8
+        )
+
+    plt.xlabel("PC1")
+    plt.ylabel("PC2")
+    plt.title("PCA of Sleep Stages")
+    plt.legend(title="Sleep Stage")
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/Index_PCA_subject_2.svg", format='svg')
+    plt.show()
+
 
 
