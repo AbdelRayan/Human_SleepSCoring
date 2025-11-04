@@ -1,9 +1,19 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import butter, filtfilt, decimate, find_peaks
+from joblib import Parallel, delayed
+from scipy.signal import butter, filtfilt, decimate, find_peaks, welch, savgol_filter
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 import pandas as pd
+from specparam import SpectralModel
+
+Red = '#d13838'
+Blue = '#127be3'
+DarkBlue = '#09217a'
+LightBlue = '#9cd4ff'
+Yellow = '#eff250'
+Orange = '#faac11'
+Purple = '#a170fd'
 
 state_labels = ['Wake', 'N1', 'N2', 'N3', 'REM']
 
@@ -441,5 +451,97 @@ def index_pca(index_n, mapped_scores_old, index_r, index_w, output_dir):
     plt.savefig(f"{output_dir}/Index_PCA_subject_2.svg", format='svg')
     plt.show()
 
+def aperiodic_fit(pfc_data, states, fs, raw_pfc, output_dir):
+    # --- Parameters ---
+    window_size = 10 * fs
+    lfp_PFC = np.ravel(pfc_data)  # flatten in case it's 2D
+    sleep_states = states.flatten()
+    step_size = window_size
+
+    num_windows = len(lfp_PFC) // window_size
+    time_stamps = np.arange(num_windows) * 10  # adjust timing scale if needed
+    window_length = 11  # for Savitzky-Golay
+    polyorder = 4
+
+    # --- Prepare windows ---
+    window_data = [raw_pfc[i * window_size:(i + 1) * window_size] for i in range(num_windows)]
+
+    # --- Diagnostic aperiodic fit function ---
+    def safe_aperiodic_fit(window, idx, aperiodic_fit_fn):
+        try:
+            # Skip flat/empty windows
+            if len(window) == 0 or np.std(window) < 1e-12:
+                return np.nan, "flat_or_empty"
+            if not np.all(np.isfinite(window)):
+                return np.nan, "nonfinite_input"
+
+            # Compute exponent
+            exp = aperiodic_fit_fn(window)
+            if not np.isfinite(exp):
+                return np.nan, "nonfinite_exponent"
+
+            return float(exp), "ok"
+
+        except Exception as e:
+            return np.nan, f"exception: {str(e)}"
+
+    def aperiodic_fit(window_data):
+        freqs, psd = welch(window_data, fs=fs, nperseg=1024)
+        mask = (freqs <= 100)
+        freqs, psd = freqs[mask], psd[mask]
+        fm = SpectralModel(min_peak_height=0.05, aperiodic_mode='fixed', verbose=False)
+        fm.fit(freqs, psd)
+        aperiodic = fm.get_params('aperiodic')[1]
+        return aperiodic
+
+    # --- Compute aperiodic exponents in parallel ---
+    results = Parallel(n_jobs=-1)(
+        delayed(safe_aperiodic_fit)(w, i, aperiodic_fit) for i, w in enumerate(window_data)
+    )
+
+    # --- Extract exponents and statuses ---
+    aperiodic_exponents, statuses = zip(*results)
+    aperiodic_exponents = np.array(aperiodic_exponents)
+    if len(aperiodic_exponents) > len(states):
+        print(len(aperiodic_exponents) - len(states))
+        for n in range(0, len(aperiodic_exponents) - len(states)):
+            states = np.append(states, states[len(states) - 1])
+
+    # --- Optional: report problem windows ---
+    problem_windows = [(i, s) for i, s in enumerate(statuses) if s != "ok"]
+    print(f"Problematic windows: {len(problem_windows)}")
+    print("First 10 problematic windows:", problem_windows[:10])
+
+    # --- Replace NaNs with median of valid exponents for plotting ---
+    valid_mask = np.isfinite(aperiodic_exponents)
+    median_val = np.median(aperiodic_exponents[valid_mask])
+    aperiodic_exponents[~valid_mask] = median_val
+
+    # --- Thresholding to remove extreme outliers ---
+    threshold_min = np.percentile(aperiodic_exponents, 2)
+    threshold_max = np.percentile(aperiodic_exponents, 98)
+    valid_indices = (aperiodic_exponents >= threshold_min) & (aperiodic_exponents <= threshold_max)
+    filtered_exponents = aperiodic_exponents[valid_indices]
+    filtered_timestamps = time_stamps[valid_indices]
+    valid_states = states[valid_indices]
+
+    # --- Smooth and normalize ---
+    window_length_sg = window_length if len(filtered_exponents) >= window_length else len(filtered_exponents) | 1
+    smoothed_exponents = savgol_filter(filtered_exponents, window_length=window_length_sg, polyorder=polyorder)
+    normalized_exponents = 2 * ((smoothed_exponents - smoothed_exponents.min()) / (
+                smoothed_exponents.max() - smoothed_exponents.min())) - 1
+
+    # --- Plot ---
+    plt.figure(figsize=(18, 5))
+    plt.plot(filtered_timestamps, normalized_exponents, marker='.', linestyle='-', color=DarkBlue)
+    plt.xlabel('Time (s)')
+    plt.ylabel('Aperiodic Exponent')
+    plt.title('Normalized Aperiodic Fit Over Time (With Threshold)')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/Aperiodic_fit.svg", format='svg')
+    plt.show()
+
+    return normalized_exponents, smoothed_exponents, valid_states, aperiodic_exponents
 
 
