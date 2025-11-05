@@ -12,6 +12,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 import pandas as pd
 from specparam import SpectralModel
+import seaborn as sns
 
 Red = '#d13838'
 Blue = '#127be3'
@@ -998,6 +999,82 @@ def fooof_report(output_dir, raw_pfc, fs=250):
     # Save the report plot to a file (e.g., PNG or PDF)
     plt.savefig(f"{output_dir}/fooof_report.png", dpi=300, bbox_inches='tight')
     plt.show()
+
+def aperiodic_fit_bar(valid_states, normalized_exponents, output_dir):
+    colors = ['royalblue', 'teal', 'purple', 'forestgreen', 'firebrick']
+
+    df = pd.DataFrame({'state': valid_states, 'aperiodic': normalized_exponents})
+    summary = df.groupby('state')['aperiodic'].agg(['mean', 'sem']).reset_index()
+    print(summary)
+    plt.figure(figsize=(7, 5))
+    plt.bar(summary['state'], summary['mean'], yerr=summary['sem'],
+            capsize=5, color=[colors[int(s)] for s in summary['state']], edgecolor='black', zorder=2, alpha=0.6)
+    plt.xticks([0, 1, 2, 3, 4], ['W', 'N1', 'N2', 'N3', 'REM'])
+    plt.ylim(-1.1, 1.1)
+    plt.xlabel('Sleep State')
+    plt.ylabel('Normalized mean aperiodic fit')
+    plt.title('Aperiodic per Sleep State')
+    plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/Aperiodic_fit_bar.svg", format='svg')
+    plt.show()
+
+def aperiodic_fit_violin(valid_states, normalized_exponents, output_dir):
+    labels = ['W', 'N1', 'N2', 'N3', 'REM']
+    colors = {0: 'royalblue', 1: 'teal', 2: 'purple', 3: 'forestgreen', 4: 'firebrick'}
+    all_states = list(range(5))
+    df = pd.DataFrame({'state': valid_states, 'aperiodic': normalized_exponents})
+    summary = df.groupby('state')['aperiodic'].agg(['mean', 'sem']).reset_index()
+    # Build data for ordered states 0..4
+    data_for_violin = [df.loc[df['state'] == s, 'aperiodic'].values for s in all_states]
+    counts = [len(d) for d in data_for_violin]
+    print("Counts per state (0..4):", counts)
+    print("Unique states present:", sorted(df['state'].unique()))
+
+    # Prepare dataframe for seaborn
+    df_plot = df.copy()
+    df_plot['state'] = df_plot['state'].astype(int)
+
+    # Violin plot
+    plt.figure(figsize=(8, 6))
+    palette = [colors[s] for s in all_states]
+
+    ax = sns.violinplot(
+        x='state', y='aperiodic', data=df_plot,
+        order=all_states,
+        palette=palette,
+        cut=0,  # no tails beyond data range
+        bw='scott',  # kernel bandwidth
+        inner=None  # we’ll add medians manually
+    )
+
+    # Overlay jittered scatter points (optional)
+    sns.stripplot(
+        x='state', y='aperiodic', data=df_plot,
+        order=all_states,
+        color='k', size=1.5, jitter=0.15, alpha=0.3
+    )
+
+    # Compute medians and overlay them
+    medians = [np.nanmedian(d) if len(d) > 0 else np.nan for d in data_for_violin]
+    for i, m in enumerate(medians):
+        if not np.isnan(m):
+            plt.plot(i, m, marker='o', color='white', markeredgecolor='black',
+                     markersize=6, zorder=10)
+
+    # Cosmetics
+    ax.set_xticklabels(labels)
+    ax.set_xlabel('Sleep State')
+    ax.set_ylabel('Normalized mean aperiodic fit')
+    ax.set_ylim(-1.1, 1.1)
+    ax.set_title('Aperiodic fit per Sleep State (violin)')
+    plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
+    plt.tight_layout()
+
+    # Save + show
+    plt.savefig(f"{output_dir}/Aperiodic_fit_violin.svg", format="svg")
+    plt.show()
+
 
 
 
