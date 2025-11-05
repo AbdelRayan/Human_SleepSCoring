@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from fooof import FOOOF
 from joblib import Parallel, delayed
+from matplotlib import ticker
 from neurodsp.aperiodic import compute_irasa, fit_irasa
 from scipy.signal import butter, filtfilt, decimate, find_peaks, welch, savgol_filter
 from scipy.stats import zscore
@@ -387,10 +388,11 @@ def raw_signals(states, raw_hpc, raw_pfc, pfc_tag, hpc_tag, output_dir):
 def indices_vs_hypnogram(epochs, hypno_epochs, index_w, index_n, index_r, mapped_scores, output_dir):
     """
     Plot smoothed Wei indices (W, N, R) alongside hypnogram scores.
+    Ensures vertical gridlines for every x-tick.
     Requires a pre-defined smooth_and_norm() function.
     """
 
-    # Smooth and normalize all indices using your shared helper
+    # Smooth and normalize all indices using your helper
     index_w_smoothed = smooth_and_norm(index_w)
     index_r_smoothed = smooth_and_norm(index_r)
     index_n_smoothed = smooth_and_norm(index_n)
@@ -408,7 +410,8 @@ def indices_vs_hypnogram(epochs, hypno_epochs, index_w, index_n, index_r, mapped
     ax1.plot(epochs[times], index_r_smoothed[times], label='Index R', color='red')
 
     # Plot hypnogram
-    ax2.plot(hypno_epochs[hypno_times], mapped_scores[hypno_times], label='Mapped scores', color='gray')
+    ax2.plot(hypno_epochs[hypno_times], mapped_scores[hypno_times],
+             label='Mapped scores', color='gray')
 
     # Legends
     ax1.legend()
@@ -420,10 +423,17 @@ def indices_vs_hypnogram(epochs, hypno_epochs, index_w, index_n, index_r, mapped
     ax2.set_yticks([0, 1, 2, 3, 4])
     ax2.set_yticklabels(state_labels)
     ax2.invert_yaxis()
-    xticks = np.linspace(epochs[0], epochs[-1], num=20)  # increase 'num' for more ticks
-    ax2.set_xticks(xticks)  # apply to the bottom axis (which shares x with ax1)
-    ax1.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
-    ax2.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
+
+    # Define evenly spaced x-ticks (increase num for denser grid)
+    xticks = np.linspace(epochs[0], epochs[-1], num=40)
+
+    # Apply fixed locator so every tick gets a grid line
+    for ax in (ax1, ax2):
+        ax.set_xticks(xticks)
+        ax.xaxis.set_major_locator(ticker.FixedLocator(xticks))
+        ax.grid(True, which='major', axis='x', linestyle='--', alpha=0.6)
+        ax.grid(True, which='major', axis='y', linestyle='--', alpha=0.6)
+
     # Layout and save
     plt.tight_layout()
     plt.savefig(f'{output_dir}/all_new_indices_vs_wei.svg', format='svg')
