@@ -304,6 +304,15 @@ def normalised_powers(EMG_norm, noise_norm, delta_norm, theta_norm, sigma_norm, 
     ax9.set_xlabel('Epochs')
     # Adjust layout to avoid overlap
     plt.tight_layout()
+    ax1.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
+    ax2.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
+    ax3.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
+    ax4.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
+    ax5.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
+    ax6.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
+    ax7.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
+    ax8.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
+    ax9.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
 
     plt.savefig(f"{output_dir}/Normalised_powers.svg", format='svg', dpi=300)
     # Show the plots
@@ -366,7 +375,9 @@ def raw_signals(states, raw_hpc, raw_pfc, pfc_tag, hpc_tag, output_dir):
     # Set y-axis limits (example values, adjust as needed)
     ax1.set_ylim(-0.001, 0.001)  # Replace with appropriate limits for your data
     ax2.set_ylim(-0.001, 0.001)  # Replace with appropriate limits for your data
-
+    ax1.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
+    ax2.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
+    ax3.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
     # Adjust layout to avoid overlap
     plt.tight_layout()
     plt.savefig(f"{output_dir}/RAW_signals_Hypnogram.svg", format='svg', dpi=300)
@@ -409,7 +420,10 @@ def indices_vs_hypnogram(epochs, hypno_epochs, index_w, index_n, index_r, mapped
     ax2.set_yticks([0, 1, 2, 3, 4])
     ax2.set_yticklabels(state_labels)
     ax2.invert_yaxis()
-
+    xticks = np.linspace(epochs[0], epochs[-1], num=20)  # increase 'num' for more ticks
+    ax2.set_xticks(xticks)  # apply to the bottom axis (which shares x with ax1)
+    ax1.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
+    ax2.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
     # Layout and save
     plt.tight_layout()
     plt.savefig(f'{output_dir}/all_new_indices_vs_wei.svg', format='svg')
@@ -483,7 +497,7 @@ def index_barplot(index_n, index_r, index_w, mapped_scores, output_dir):
                  ha='center', va='bottom', fontsize=fontsize)
         plt.text(x[i] + bar_width, values_n[i] + 0.02, f"{values_n[i]:.2f}",
                  ha='center', va='bottom', fontsize=fontsize)
-
+    plt.grid(True)
     plt.tight_layout()
     plt.savefig(f'{output_dir}/all_new_indices_vs_wei_bar.svg', format='svg')
     plt.show()
