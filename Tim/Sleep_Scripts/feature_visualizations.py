@@ -1,7 +1,12 @@
+from collections import defaultdict
+
 import numpy as np
 import matplotlib.pyplot as plt
+from fooof import FOOOF
 from joblib import Parallel, delayed
+from neurodsp.aperiodic import compute_irasa, fit_irasa
 from scipy.signal import butter, filtfilt, decimate, find_peaks, welch, savgol_filter
+from scipy.stats import zscore
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 import pandas as pd
@@ -16,6 +21,97 @@ Orange = '#faac11'
 Purple = '#a170fd'
 
 state_labels = ['Wake', 'N1', 'N2', 'N3', 'REM']
+
+def raw_to_epochs(data, sf, epoch):
+    # total amount of samples per epoch
+    samples_per_epoch = int(epoch * sf)
+    # number of epochs in data
+    n_epochs = len(data) // samples_per_epoch
+    # cut data to full epochs
+    cropped_data = data[:n_epochs * samples_per_epoch]
+    # reshape to epochs
+    epochs = cropped_data.reshape(n_epochs, samples_per_epoch)
+    print("New data shape:", epochs.shape)
+
+    return epochs
+
+def calc_fractal_component(sleep_states, epoched_data, fs, f_range):
+    # calculate aperiodic for all epochs per state
+    irasa_by_state = defaultdict(list)
+
+    for eeg_epoch, state in zip(epoched_data, sleep_states):
+        freqs, psd_aperiodic, _ = compute_irasa(eeg_epoch, fs, f_range=f_range)
+        irasa_by_state[state].append([freqs, psd_aperiodic])
+
+    # calculate aperiodic mean per state
+    irasa_mean_by_state = {}
+
+    for state, irasa_list in irasa_by_state.items():
+        aperiodics = np.array([ap for _, ap in irasa_list])
+        freqs = irasa_list[0][0]
+        mean_aperiodic = np.mean(aperiodics, axis=0)
+        #sem_aperiodic = np.std(aperiodics, axis=0) / np.sqrt(aperiodics.shape[0])
+        irasa_mean_by_state[state] = (freqs, mean_aperiodic)
+        #irasa_mean_by_state[state] = (freqs, mean_aperiodic, sem_aperiodic)
+
+    # remove index 5, which corresponds to movement
+    if 5 in irasa_mean_by_state:
+        del irasa_mean_by_state[5]
+
+    return irasa_mean_by_state
+
+def calc_slopes(epoched_data, fs, f_range, states):
+    epoch_slopes = []
+    valid_states = []
+
+    # calculate slope for each epoch
+    for i, epoch in enumerate(epoched_data):
+        freqs, psd_aperiodic, _ = compute_irasa(epoch, fs, f_range=f_range)
+
+        # Clean: remove invalid or non-positive values
+        valid = np.isfinite(psd_aperiodic) & (psd_aperiodic > 0)
+        freqs = freqs[valid]
+        psd_aperiodic = psd_aperiodic[valid]
+
+        # Skip if not enough valid data points
+        if len(freqs) < 5:
+            continue
+
+        try:
+            intercept, slope = fit_irasa(freqs, psd_aperiodic)
+            epoch_slopes.append(slope)
+            valid_states.append(states[i])  # keep corresponding state
+        except Exception:
+            continue
+
+    if len(epoch_slopes) == 0:
+        raise ValueError("No valid slopes were computed — check your data or f_range.")
+
+    # Convert to arrays
+    epoch_slopes = np.array(epoch_slopes)
+    valid_states = np.array(valid_states)
+
+    # Z-score raw slopes
+    raw_slopes = zscore(epoch_slopes)
+    min_len = min(len(raw_slopes), len(valid_states))
+    raw_slopes = raw_slopes[:min_len]
+    valid_states = valid_states[:min_len]
+
+    # Adjust window length if smaller than data length
+    window_length = min(101, len(raw_slopes) // 2 * 2 + 1)  # must be odd
+    smoothed_slopes = savgol_filter(raw_slopes, window_length, polyorder=5, mode='interp')
+    smoothed_slopes = zscore(smoothed_slopes)
+
+    # Mean slope per state
+    mean_slope_per_state = {}
+    smoothed_mean_slope_per_state = {}
+
+    for state in np.unique(valid_states):
+        mask = valid_states == state
+        mean_slope_per_state[state] = np.nanmean(raw_slopes[mask])
+        smoothed_mean_slope_per_state[state] = np.nanmean(smoothed_slopes[mask])
+
+    return raw_slopes, smoothed_slopes, mean_slope_per_state, smoothed_mean_slope_per_state
 
 def wei_normalizing(data):
     data = np.array(data)
@@ -46,7 +142,6 @@ def N_feature(EOG1, EOG2, epoch_length, fs):
         feature = (1-ac) * cross_cor_val[count]
         c_features = np.append(c_features, feature)
     return c_features
-
 
 def normalized_cross_correlation(epoch1, epoch2):
     # zero-mean
@@ -543,5 +638,342 @@ def aperiodic_fit(pfc_data, states, fs, raw_pfc, output_dir):
     plt.show()
 
     return normalized_exponents, smoothed_exponents, valid_states, aperiodic_exponents
+
+def fractal_power_component(states, subject, raw_pfc, output_dir, f_range=(0.3, 30),
+                            fmax = 30, fmin=0.3, sf=250,epoch=10):
+
+    subject_fractal_data = {}
+    subject_slope_data = {}
+    subject_states = {}
+
+    subject_states[subject] = states
+
+    # get eeg data in epochs
+    eeg_in_epochs = raw_to_epochs(raw_pfc, sf, epoch)
+
+    # calculate fractal component
+    subject_fractal_data[subject] = calc_fractal_component(states, eeg_in_epochs, sf, f_range)
+
+    # calculate slopes
+    subject_slope_data[subject] = calc_slopes(eeg_in_epochs, sf, f_range, states)
+
+    aperiodic_by_state = defaultdict(list)
+    freqs_ref = {}
+
+    for subject, subject_dict in subject_fractal_data.items():
+        for state, (freqs, aperiodic) in subject_dict.items():
+            aperiodic_by_state[state].append(aperiodic)
+            freqs_ref[state] = freqs
+
+    mean_by_state = {}
+    sem_by_state = {}
+
+    for state, aperiodic_list in aperiodic_by_state.items():
+        arr = np.stack(aperiodic_list, axis=0)
+        mean_by_state[state] = (freqs_ref[state], np.mean(arr, axis=0))
+        sem_by_state[state] = (freqs_ref[state], np.std(arr, axis=0, ddof=1) / np.sqrt(arr.shape[0]))
+
+    ### slopes
+
+    raw_slope_by_state = defaultdict(list)
+    smoothed_slope_by_state = defaultdict(list)
+
+    for subject, (_, _, raw_slopes, smoothed_slopes) in subject_slope_data.items():
+        for state, slope in raw_slopes.items():
+            raw_slope_by_state[state].append(slope)
+        for state, slope in smoothed_slopes.items():
+            smoothed_slope_by_state[state].append(slope)
+
+    mean_raw_slope_by_state = {}
+    sem_raw_slope_by_state = {}
+    mean_smoothed_slope_by_state = {}
+    sem_smoothed_slope_by_state = {}
+
+    for state, slope_list in raw_slope_by_state.items():
+        slope_array = np.vstack(slope_list)  # shape: (n_subjects, n_epochs)
+        mean_raw_slope_by_state[state] = np.mean(slope_array, axis=0)
+        sem_raw_slope_by_state[state] = np.std(slope_array, axis=0) / np.sqrt(slope_array.shape[0])
+
+    for state, slope_list in smoothed_slope_by_state.items():
+        slope_array = np.vstack(slope_list)
+        mean_smoothed_slope_by_state[state] = np.mean(slope_array, axis=0)
+        sem_smoothed_slope_by_state[state] = np.std(slope_array, axis=0) / np.sqrt(slope_array.shape[0])
+    # Colors and labels
+    colors = {0: 'royalblue', 1: 'teal', 2: 'purple', 3: 'forestgreen', 4: 'firebrick'}
+    stage_labels = {0: 'W', 1: 'N1', 2: 'N2', 3: 'N3', 4: 'REM'}
+
+    plt.figure(figsize=(10, 6))
+
+    for state in sorted(mean_by_state.keys()):
+        freqs, mean_aperiodic = mean_by_state[state]
+        _, sem_aperiodic = sem_by_state[state]
+
+        plt.plot(
+            freqs, mean_aperiodic,
+            label=stage_labels.get(state, f"State {state}"),
+            alpha=0.9,
+            color=colors.get(state, 'gray')
+        )
+
+        # Shaded SEM area
+        plt.fill_between(
+            freqs,
+            mean_aperiodic - sem_aperiodic,
+            mean_aperiodic + sem_aperiodic,
+            color=colors.get(state, 'gray'),
+            alpha=0.15
+        )
+
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.ylim(1e-14, 1e-8)  # ✅ Fixed y-axis limits
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Power')
+    plt.title('Fractal Power Component (IRASA)')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    plt.savefig(f"{output_dir}/fractal_power_component.svg", format='svg')
+    plt.show()
+    return eeg_in_epochs, mean_raw_slope_by_state, mean_smoothed_slope_by_state
+
+def slope_per_state(output_dir, mean_raw_slope_by_state, mean_smoothed_slope_by_state,
+                    states, eeg_in_epochs, sf=250, f_range=(0.3, 30)):
+
+    epoch_slopes = []
+    valid_states = []
+
+    for i, eeg_epoch in enumerate(eeg_in_epochs):
+        freqs, psd_aperiodic, _ = compute_irasa(eeg_epoch, sf, f_range=f_range)
+
+        # Remove invalid values
+        valid = np.isfinite(psd_aperiodic) & (psd_aperiodic > 0)
+        freqs = freqs[valid]
+        psd_aperiodic = psd_aperiodic[valid]
+
+        # Skip epochs with too few points
+        if len(freqs) < 5:
+            continue
+
+        try:
+            intercept, slope = fit_irasa(freqs, psd_aperiodic)
+            epoch_slopes.append(slope)
+            valid_states.append(states[i])
+        except Exception:
+            continue
+
+    # Convert to arrays
+    epoch_slopes = np.array(epoch_slopes)
+    valid_states = np.array(valid_states)
+
+    # Compute z-scores
+    raw_slopes = zscore(epoch_slopes)
+    min_len = min(len(raw_slopes), len(valid_states))
+    raw_slopes = raw_slopes[:min_len]
+    valid_states = valid_states[:min_len]
+
+    # Adjust window length for savgol_filter
+    window_length = min(101, len(raw_slopes) // 2 * 2 + 1)  # must be odd
+    smoothed_slopes = savgol_filter(raw_slopes, window_length, polyorder=5, mode='interp')
+    smoothed_slopes = zscore(smoothed_slopes)
+
+    # Compute mean slopes per state
+    mean_slope_per_state = {}
+    smoothed_mean_slope_per_state = {}
+
+    for state in np.unique(valid_states):
+        mask = valid_states == state
+        mean_slope_per_state[state] = np.nanmean(raw_slopes[mask])
+        smoothed_mean_slope_per_state[state] = np.nanmean(smoothed_slopes[mask])
+
+    # Extract mean slopes in sorted order
+    stages_sorted = sorted(mean_slope_per_state.keys())
+    mean_slopes = [mean_slope_per_state[s] for s in stages_sorted]
+    smoothed_mean_slopes = [smoothed_mean_slope_per_state[s] for s in stages_sorted]
+    stages_sorted = sorted(mean_slope_per_state.keys())
+    # Extract means per state
+    mean_slopes = [np.mean(mean_raw_slope_by_state[state]) for state in stages_sorted if
+                   state in mean_raw_slope_by_state]
+    smoothed_mean_slopes = [np.mean(mean_smoothed_slope_by_state[state]) for state in stages_sorted if
+                            state in mean_smoothed_slope_by_state]
+
+    plt.figure(figsize=(7, 6))
+
+    # draw grid
+    plt.grid(axis='x', color='lightgray', linestyle='--', linewidth=0.5, zorder=0)
+    plt.axhline(0, color='gray', linewidth=1, alpha=0.5, zorder=0)
+
+    plt.scatter(stages_sorted, mean_slopes, color='black', marker='s', s=60, label='raw slope', zorder=2)
+    plt.scatter(stages_sorted, smoothed_mean_slopes, color='green', marker='s', s=30, label='smoothed slope', zorder=2)
+    plt.plot(stages_sorted, mean_slopes, color='black', linestyle='--', alpha=0.6, zorder=2)
+    plt.plot(stages_sorted, smoothed_mean_slopes, color='green', linestyle='--', alpha=0.6, zorder=2)
+
+    plt.xticks(stages_sorted, ['W', 'N1', 'N2', 'N3', 'REM'])
+    plt.ylabel('Z-normalized slope')
+    plt.xlabel('Sleep Stage')
+    plt.title('Slope per state')
+    plt.ylim(-2, 2)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/slope_per_state.svg", format="svg")
+    plt.show()
+    return smoothed_slopes
+
+def fractal_slope_vs_hypnogram(subject, smoothed_slopes, output_dir, states, epoch_length_sec=10):
+    peaks, _ = find_peaks(smoothed_slopes, distance=120, prominence=2)
+
+    valleys, _ = find_peaks(-smoothed_slopes, distance=120, prominence=2)
+    subj_states = states
+    n_epochs = len(subj_states)
+    time_axis = np.arange(n_epochs) * epoch_length_sec / 60  # minutes
+
+    # define sleep stage colors
+    # Replace 5 with 0
+    # subj_states[subj_states == 5] = 0
+
+    stage_colors = {0: 'royalblue', 1: 'teal', 2: 'purple', 3: 'forestgreen', 4: 'firebrick'}
+    stage_labels = {0: 'W', 1: 'N1', 2: 'N2', 3: 'N3', 4: 'REM'}
+
+    # Parameters
+    REM_code = 4
+    min_rem_gap = 20  # ignore interruptions <= 1 epoch
+
+    # --- First non-Wake ---
+    non_wake_idx = np.where(subj_states != 0)[0]
+    first_non_wake = non_wake_idx[0] if len(non_wake_idx) > 0 else None
+    last_non_wake = non_wake_idx[-1] if len(non_wake_idx) > 0 else None
+
+    # --- REM clusters ---
+    is_rem = (subj_states == REM_code).astype(int)
+    diff = np.diff(np.concatenate(([0], is_rem, [0])))
+    run_starts = np.where(diff == 1)[0]
+    run_ends = np.where(diff == -1)[0] - 1
+
+    # Merge short interruptions
+    merged_starts = [run_starts[0]] if len(run_starts) > 0 else []
+    merged_ends = []
+    for i in range(1, len(run_starts)):
+        if run_starts[i] - run_ends[i - 1] - 1 <= min_rem_gap:
+            continue
+        else:
+            merged_ends.append(run_ends[i - 1])
+            merged_starts.append(run_starts[i])
+    if len(run_ends) > 0:
+        merged_ends.append(run_ends[-1])
+
+    # Desired order for y-axis
+    desired_order = ['W', 'REM', 'N1', 'N2', 'N3']
+
+    # Map original numeric states to their labels
+    stage_labels = {0: 'W', 1: 'N1', 2: 'N2', 3: 'N3', 4: 'REM'}
+
+    # Create a mapping: original numeric code -> new vertical position
+    new_y_map = {label: i for i, label in enumerate(desired_order)}
+    states_labels = np.array([stage_labels[s] for s in subj_states])
+    states_new_y = np.array([new_y_map[s] for s in states_labels])
+
+    # create plot layout (2 plots in 1 figure)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 5), sharex=True)
+
+    ### plot 1: colored coded hypnogram
+    #######################################################################
+    # plot plain black line hypnogram
+    # --- Create list of vertical line positions ---
+    line_positions = [first_non_wake] + merged_ends if first_non_wake is not None else merged_ends
+    # Add the last non-wake if it isn’t already in the list
+    if last_non_wake is not None and last_non_wake not in line_positions:
+        line_positions.append(last_non_wake)
+    line_positions = [0] + line_positions + [len(subj_states) - 1]  # include start and end
+    line_times = time_axis[line_positions]
+
+    # --- Plot hypnogram ---
+    ax1.step(time_axis, states_new_y, where='post', color='black', linewidth=0.5, zorder=2)
+
+    # Shade regions between lines (alternating) and outside
+    colors = ['lightgreen', 'lightblue']
+    for i in range(1, len(line_times) - 2):
+        start = line_times[i]
+        end = line_times[i + 1]
+        ax1.axvspan(line_times[i], line_times[i + 1], color=colors[i % 2], alpha=0.5, zorder=1)
+        # Add cycle label at the center of the shaded region
+        center = (start + end) / 2
+        ax1.text(center, 0.5, f'Cycle {i}',
+                 ha='center', va='bottom', fontsize=10, color='black')
+
+    # Shade outside areas
+    ax1.axvspan(time_axis[0], line_times[1], color='lightgray', alpha=0.3, zorder=0)  # before first non-Wake/cluster
+    ax1.axvspan(line_times[-2], time_axis[-1], color='lightgray', alpha=0.3, zorder=0)  # after last cluster
+
+    # Draw vertical lines
+    for t in line_times[1:-1]:  # avoid start and end
+        ax1.axvline(t, color='red', linestyle='--', alpha=0.7, zorder=3)
+
+    # plot dots colored based on state
+    for s_num in np.unique(subj_states):
+        ids = np.where(subj_states == s_num)[0]
+        ax1.scatter(time_axis[ids], states_new_y[ids],
+                    color=stage_colors[s_num], label=stage_labels[s_num], s=10)
+
+    # additional settings
+    ax1.set_yticks(range(len(desired_order)))
+    ax1.set_yticklabels(desired_order)
+    ax1.set_ylabel('Sleep Stage')
+    ax1.invert_yaxis()
+    ax1.set_xlim(time_axis[0], time_axis[-1])
+    ax1.set_title(f'Hypnogram - {subject}')
+
+    difference = len(time_axis) - len(smoothed_slopes)
+    ### plot 2: smoothed fractal slope
+    ########################################################################
+    ax2.plot(time_axis[:-difference], smoothed_slopes, color='black', label='Fractal slope', linewidth=1)
+    # color lines based on sleep state
+    # Define colors for N3 and REM
+    stage_colors = {3: 'green', 4: 'red'}
+
+    # Loop over stages to color the segments
+    for stage, color in stage_colors.items():
+        # Find contiguous segments of this stage
+        mask = (subj_states == stage)
+        if not np.any(mask):
+            continue  # skip if stage not present
+
+        # Split into contiguous segments
+        segments = np.split(time_axis, np.where(np.diff(mask.astype(int)) != 0)[0] + 1)
+        slope_segments = np.split(smoothed_slopes, np.where(np.diff(mask.astype(int)) != 0)[0] + 1)
+
+        for t_seg, s_seg, m_seg in zip(segments, slope_segments,
+                                       np.split(mask, np.where(np.diff(mask.astype(int)) != 0)[0] + 1)):
+            if np.any(m_seg):  # only plot segments where mask is True
+                ax2.plot(t_seg[m_seg], s_seg[m_seg], color=color, linewidth=3)
+
+    # Solid line at 0
+    ax2.axhline(0, color='gray', linewidth=1, zorder=1)
+
+    # Dashed lines at +1 and -1
+    ax2.axhline(1, color='lightgray', linestyle='--', linewidth=1, zorder=1)
+    ax2.axhline(-1, color='lightgray', linestyle='--', linewidth=1, zorder=1)
+
+    # additional settings
+    ax2.set_xlabel('Time (minutes)')
+    ax2.set_ylabel('Z-normalized fractal slope')
+    ax2.set_ylim(-2, 2)
+    ax2.set_xlim(time_axis[0], time_axis[-1])
+    ax2.set_title(f'Fractal slopes - {subject}')
+    ax2.legend()
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/fractalslope_vs_hypnogram.svg", format='svg')
+    plt.show()
+
+def fooof_report(output_dir, raw_pfc, fs=250):
+    freqs, psd = welch(raw_pfc, fs=fs, nperseg=1024)
+    # Initialize and fit FOOOF model
+    fm = FOOOF(peak_width_limits=[2, 8], aperiodic_mode='fixed')
+    # Generate the report (this creates a matplotlib figure)
+    fm.report(freqs, psd, [1, 50], plt_log=True)
+    # Save the report plot to a file (e.g., PNG or PDF)
+    plt.savefig(f"{output_dir}/fooof_report.png", dpi=300, bbox_inches='tight')
+    plt.show()
+
 
 
