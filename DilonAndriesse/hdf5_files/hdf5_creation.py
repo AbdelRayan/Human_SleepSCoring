@@ -29,7 +29,7 @@ if module_path not in sys.path:
 from hdf5_files.computing_features import psd_multitaper, wei_normalizing, index_W, index_N, index_R, Index_1, Index_2, Index_3, Index_4, calc_aperiodic_fit, calc_dfa, calc_mse
 from hdf5_files.Artefacts_Detection import removeArtefacts, artefact_epochs
 
-def getNewFeatures(raw_fpz, raw_pz, raw_emg, raw_eog, states, fs, epoch_length):
+def getNewFeatures(raw_noise, raw_delta, raw_theta, raw_sigma, raw_beta, raw_gamma, raw_emg, states, fs, epoch_length):
   """
   Computes new features from raw data.
 
@@ -55,16 +55,9 @@ def getNewFeatures(raw_fpz, raw_pz, raw_emg, raw_eog, states, fs, epoch_length):
   """
   # Get mapped scores
   sleep_scoring = np.ravel(states)
-  # print(sleep_scoring)
-  # print(len(sleep_scoring))
-  reshaped_scores = sleep_scoring[:len(sleep_scoring) // epoch_length * epoch_length].reshape(-1, epoch_length)
-  # reshaped_scores = sleep_scoring
-  # print(reshaped_scores)
-  # print(len(reshaped_scores))
+  reshaped_scores = sleep_scoring[:len(sleep_scoring) // (epoch_length*fs) * (epoch_length*fs)].reshape(-1, epoch_length*fs)
   majority_scores = mode(reshaped_scores, axis=1).mode.flatten()
-  # majority_scores = mode(sleep_scoring).mode.flatten()
   mapped_scores = np.array(majority_scores)
-  # mapped_scores = np.array(sleep_scoring)
 
   #Frequency ranges
   noise_band = [0,0.5]
@@ -79,11 +72,11 @@ def getNewFeatures(raw_fpz, raw_pz, raw_emg, raw_eog, states, fs, epoch_length):
   window_length = fs*epoch_length
 
   # Get powers
-  noise = psd_multitaper(np.ravel(raw_pz), fs, noise_band, window_length)
-  delta = psd_multitaper(np.ravel(raw_fpz), fs, delta_band, window_length)
-  theta = psd_multitaper(np.ravel(raw_pz), fs, theta_band, window_length)
-  sigma = psd_multitaper(np.ravel(raw_fpz), fs, sigma_band, window_length)
-  gamma = psd_multitaper(np.ravel(raw_fpz), fs, gamma_band, window_length)
+  noise = psd_multitaper(np.ravel(raw_noise), fs, noise_band, window_length)
+  delta = psd_multitaper(np.ravel(raw_delta), fs, delta_band, window_length)
+  theta = psd_multitaper(np.ravel(raw_theta), fs, theta_band, window_length)
+  sigma = psd_multitaper(np.ravel(raw_sigma), fs, sigma_band, window_length)
+  gamma = psd_multitaper(np.ravel(raw_gamma), fs, gamma_band, window_length)
 
   # Normalize all these powers
   noise_norm = wei_normalizing(noise)
@@ -92,14 +85,12 @@ def getNewFeatures(raw_fpz, raw_pz, raw_emg, raw_eog, states, fs, epoch_length):
   sigma_norm = wei_normalizing(sigma)
   gamma_norm = wei_normalizing(gamma)
   emg_norm = wei_normalizing(raw_emg)
-  eog_norm = wei_normalizing(raw_eog)
 
   # Get smoothed powers as feature
   noise_smoothed = np.convolve(np.convolve(np.convolve(noise_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
   theta_smoothed = np.convolve(np.convolve(np.convolve(theta_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
   delta_smoothed = np.convolve(np.convolve(np.convolve(delta_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
   #emg_smoothed = np.convolve(np.convolve(np.convolve(emg_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
-  #eog_smoothed = np.convolve(np.convolve(np.convolve(eog_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
 
   # Compute new indices
   index_w = index_W(theta_norm, gamma_norm, emg_norm)
@@ -138,20 +129,23 @@ def getNewFeatures(raw_fpz, raw_pz, raw_emg, raw_eog, states, fs, epoch_length):
   index_4_smoothed = np.convolve(np.convolve(np.convolve(index_4_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
 
   window_size = epoch_length * fs
-  # aperiodic = calc_aperiodic_fit(raw_fpz, window_size, epoch_length, fs)
-  # aperiodic = np.array(aperiodic)
-  # dfa = calc_dfa(raw_fpz, window_size, window_size, fs)
-  # dfa = np.array(dfa)
-  # mse = calc_mse(raw_fpz, window_size, window_size, fs)
-  # mse = np.array(mse)
+  aperiodic = calc_aperiodic_fit(raw_delta, window_size, epoch_length, fs)
+  aperiodic = np.array(aperiodic)
+  aperiodic_norm = wei_normalizing(aperiodic)
+  dfa = calc_dfa(raw_delta, window_size, window_size, fs)
+  dfa = np.array(dfa)
+  dfa_norm = wei_normalizing(dfa)
+  mse = calc_mse(raw_delta, window_size, window_size, fs)
+  mse = np.array(mse)
+  mse_norm = wei_normalizing(mse)
   # Create matrix
-  new_features = np.column_stack((index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed))
-  #new_features = np.column_stack((index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed, aperiodic, dfa, mse))
+  # new_features = np.column_stack((index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed))
+  new_features = np.column_stack((index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed, aperiodic, dfa, mse))
   
   
   return new_features, mapped_scores
 
-def prepare_for_hdf5(recording, fs, files_path, epoch_length):
+def prepare_for_hdf5(subject_name, recording, fs, files_path, epoch_length, path_to_hdf5):
   """
   Prepares data for HDF5 format.
   
@@ -168,10 +162,19 @@ def prepare_for_hdf5(recording, fs, files_path, epoch_length):
   """
   # Get the right data
   for i in recording:
-    if 'Fpz-Cz' in i:
-      fpz = i
-    elif 'Pz-Oz' in i:
-      pz = i
+    if 'Noise' in i:
+      noise = i
+    if 'Delta' in i:
+      delta = i
+    if 'Theta' in i:
+      theta = i
+    if 'Sigma' in i:
+      sigma = i
+    if 'Beta' in i:
+      beta = i
+    if 'Gamma' in i:
+      gamma = i
+
     elif 'EMG' in i:
       emg = i
     elif 'EOG' in i:
@@ -179,51 +182,60 @@ def prepare_for_hdf5(recording, fs, files_path, epoch_length):
     elif 'states' in i:
       sleep_states = i
 
-  #print(recording)
-  recording_name = str(fpz[:-4].split("_")[0])     # Group name 
-  print(f"Subject name: {recording_name}")
+  print(f"Subject name: {subject_name}")
 
-  # Fpz-Cz
-  path_to_fpz = files_path + "/" + fpz
-  # Prepare data (Load + artefact removal)
-  fpz_data = loadmat(path_to_fpz)
-  fpz_data = fpz_data['Fpz-Cz']
-  fpz_data = fpz_data[8*fs:]
-  sigfpz = removeArtefacts(fpz_data, fs, [9,8], [0.2,0.1])
-  fpz_filt = np.ravel(sigfpz[0])
-  fpz_artefact_indexes = np.ravel(sigfpz[1])                 # Get the indexes of epochs containing artefacts
-  
-  # Pz-Oz
-  pz_data = loadmat(os.path.join(files_path, pz))
-  pz_data = pz_data['Pz-Oz']
-  pz_data = pz_data[8*fs:]
-  sigpz = removeArtefacts(pz_data, fs, [9,8], [0.2,0.1])
-  pz_filt = np.ravel(sigpz[0])
-  pz_artefact_indexes = np.ravel(sigpz[1])
+  noise_data = loadmat(os.path.join(files_path, noise))
+  noise_data = next(v for k, v in noise_data.items() if 'Noise' in k)
+  sig_noise = removeArtefacts(noise_data, fs, [9,8], [0.2,0.1])
+  noise_filt = np.ravel(sig_noise[0])
+  noise_artefact_indexes = np.ravel(sig_noise[1])
 
-  # EMG
-  emg_data = loadmat(os.path.join(files_path, emg))
-  emg_sampling = 1
-  emg_data = emg_data['EMG']
-  emg_data = emg_data[8:]
-  emg_data = emg_data[:len(emg_data) // (epoch_length * emg_sampling) * (epoch_length*emg_sampling)]
-  emg_data = emg_data.reshape(-1, (epoch_length * emg_sampling))
-  emg_data = emg_data.sum(axis=1)
+  delta_data = loadmat(os.path.join(files_path, delta))
+  delta_data = next(v for k, v in delta_data.items() if 'Delta' in k)
+  sig_delta = removeArtefacts(delta_data, fs, [9,8], [0.2,0.1])
+  delta_filt = np.ravel(sig_delta[0])
+  delta_artefact_indexes = np.ravel(sig_delta[1])
 
-  # EOG
-  eog_data = loadmat(os.path.join(files_path, eog))
-  eog_data = eog_data['EOG']
-  eog_data = eog_data[8*fs:]
+  theta_data = loadmat(os.path.join(files_path, theta))
+  theta_data = next(v for k, v in theta_data.items() if 'Theta' in k)
+  sig_theta = removeArtefacts(theta_data, fs, [9,8], [0.2,0.1])
+  theta_filt = np.ravel(sig_theta[0])
+  theta_artefact_indexes = np.ravel(sig_theta[1])
 
+  sigma_data = loadmat(os.path.join(files_path, sigma))
+  sigma_data = next(v for k, v in sigma_data.items() if 'Sigma' in k)
+  sig_sigma = removeArtefacts(sigma_data, fs, [9,8], [0.2,0.1])
+  sigma_filt = np.ravel(sig_sigma[0])
+  sigma_artefact_indexes = np.ravel(sig_sigma[1])
+
+  beta_data = loadmat(os.path.join(files_path, beta))
+  beta_data = next(v for k, v in beta_data.items() if 'Beta' in k)
+  sig_beta = removeArtefacts(beta_data, fs, [9,8], [0.2,0.1])
+  beta_filt = np.ravel(sig_beta[0])
+  beta_artefact_indexes = np.ravel(sig_beta[1])
+
+  gamma_data = loadmat(os.path.join(files_path, gamma))
+  gamma_data = next(v for k, v in gamma_data.items() if 'Gamma' in k)
+  sig_gamma = removeArtefacts(gamma_data, fs, [9,8], [0.2,0.1])
+  gamma_filt = np.ravel(sig_gamma[0])
+  gamma_artefact_indexes = np.ravel(sig_gamma[1])
+
+  EMG_data = loadmat(os.path.join(files_path, emg))
+  emg_data = next(v for k, v in EMG_data.items() if 'EMG' in k)
+  sig_emg = removeArtefacts(emg_data, fs, [9,8], [0.2,0.1])
+  emg_filt = np.ravel(sig_emg[0])
+  emg_artefact_indexes = np.ravel(sig_emg[1])
+  emg_filt = emg_filt[:len(emg_filt) // (epoch_length * fs) * (epoch_length*fs)]
+  emg_filt = emg_filt.reshape(-1, (epoch_length * fs))
+  emg_filt = emg_filt.sum(axis=1)
 
   sleep_scoring = loadmat(os.path.join(files_path, sleep_states))
-  states = sleep_scoring['states'][0][7:]
-  print(f"Size of raw fpz-data: {len(fpz_data)}")
-  print(f"Size of raw states: {len(states)}")
+  states = sleep_scoring['states']
+  states = states[0]
 
 
   # Create matrix for specific set of recordings
-  a = getNewFeatures(fpz_filt, pz_filt, emg_data, eog_data, states, fs, epoch_length)
+  a = getNewFeatures(noise_filt, delta_filt, theta_filt, sigma_filt, beta_filt, gamma_filt, emg_filt, states, fs, epoch_length)
   Features = a[0]
   Mapped_scores = a[1]
   print(f"Size of epoched features: {len(Features)}")
@@ -231,31 +243,22 @@ def prepare_for_hdf5(recording, fs, files_path, epoch_length):
 
   # Add the artefact epochs to mapped scores
   window_length = fs * epoch_length
-  fpz_arte_epochs = artefact_epochs(fpz_artefact_indexes, window_length)
-  #print(f"Last epoch index of artefacts: {fpz_arte_epochs[-1]}")
-  pz_arte_epochs = artefact_epochs(pz_artefact_indexes, window_length)
-  artefact_indices = np.unique(np.concatenate((fpz_arte_epochs, pz_arte_epochs)))
+
+
+  noise_arte_epochs = artefact_epochs(noise_artefact_indexes, window_length)
+  delta_arte_epochs = artefact_epochs(delta_artefact_indexes, window_length)
+  theta_arte_epochs = artefact_epochs(theta_artefact_indexes, window_length)
+  sigma_arte_epochs = artefact_epochs(sigma_artefact_indexes, window_length)
+  beta_arte_epochs = artefact_epochs(beta_artefact_indexes, window_length)
+  gamma_arte_epochs = artefact_epochs(gamma_artefact_indexes, window_length)
+  emg_arte_epochs = artefact_epochs(emg_artefact_indexes, window_length)
+  artefact_indices = np.unique(np.concatenate((noise_arte_epochs, delta_arte_epochs, theta_arte_epochs, sigma_arte_epochs, beta_arte_epochs, gamma_arte_epochs, emg_arte_epochs)))
   artefact_indices = artefact_indices.astype(int)
   #print(f"Total amount of artefacts indices: {len(artefact_indices)}")
-  Mapped_scores[artefact_indices] = 0 
-  return (Features, Mapped_scores, recording_name)
+  Mapped_scores[artefact_indices] = 5 
 
-
-# def remove_artifacts(files_path, channel, fs):
-#   """
-#   """
-#   # get specific file path
-#   path_to_chan = files_path + "/" + channel
-
-#   # Prepare data (Load + artefact removal)
-#   chan_data = loadmat(path_to_chan)
-#   chan_data = chan_data[channel]
-#   chan_data = chan_data[8*fs:]
-#   sig_chan = removeArtefacts(chan_data, fs, [9,8], [0.2,0.1])
-#   chan_filt = np.ravel(sig_chan[0])
-#   fpz_artefact_indexes = np.ravel(sig_chan[1])                 # Get the indexes of epochs containing artefacts
-
-#   return fpz_artefact_indexes
+  update_hdf5((Features, Mapped_scores, subject_name), path_to_hdf5)
+  # return (Features, Mapped_scores, recording_name)
 
 
 def update_hdf5(result, path_to_hdf5):
@@ -279,35 +282,35 @@ def update_hdf5(result, path_to_hdf5):
     print(path_to_hdf5)
     print(result[2])
     group = database.create_group(str(result[2]))
-    group.attrs['Description features'] = '[index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed]'
-    group.attrs['Description Mapped_scores'] = '[0: Artefact, 1: Wake, 3: NREM, 4: Intermediate, 5: REM]'
+    group.attrs['Description features'] = '[index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed, aperiodic, dfa, mse]'
+    group.attrs['Description Mapped_scores'] = '[0: Wake, 1: N1, 2: N2, 3: N3, 4: REM, 5: Movement]'
     group.create_dataset('Features', data = result[0])
     group.create_dataset('Mapped_scores', data = result[1])
+    
+# if __name__ == "__main__":
+#   fs = 100 # EEG sampling frequency
+#   epoch_length = 5 #in seconds
 
-if __name__ == "__main__":
-  fs = 100 # EEG sampling frequency
-  epoch_length = 5 #in seconds
+#   path_to_pt5 = 'C:/Users/andri/school/bio-informatics/internship/donders/data/human_test_data/mat_files/'   # Input folder path
+#   hdf5_path = 'C:/Users/andri/school/bio-informatics/internship/donders/data/human_test_data/hdf5/physionet_test5.h5'   #Name of the new hdf5 file to create
 
-  path_to_pt5 = 'C:/Users/andri/school/bio-informatics/internship/donders/data/human_test_data/mat_files/'   # Input folder path
-  hdf5_path = 'C:/Users/andri/school/bio-informatics/internship/donders/data/human_test_data/hdf5/physionet_test5.h5'   #Name of the new hdf5 file to create
+#   Database = h5py.File(hdf5_path, 'w')  # Output directory path
 
-  Database = h5py.File(hdf5_path, 'w')  # Output directory path
+#   files = np.ravel(os.listdir(path_to_pt5))
+#   # Create recording quintiplets (Pfz-Cz, Pz-Cz, EMG, EOG states)
+#   files = files[:len(files) // 5 * 5].reshape(-1, 5)
+#   num_processes = mp.cpu_count()
+#   print('Number of processes :', num_processes)
+#   # files = [
+#   #   'SC4042E0_EMG.mat', 
+#   #   'SC4042E0_EOG.mat', 
+#   #   'SC4042E0_Fpz-Cz.mat',
+#   #   'SC4042E0_Pz-Oz.mat',
+#   #   'SC4042E0_sleep_states.mat'
+#   # ]
 
-  files = np.ravel(os.listdir(path_to_pt5))
-  # Create recording quintiplets (Pfz-Cz, Pz-Cz, EMG, EOG states)
-  files = files[:len(files) // 5 * 5].reshape(-1, 5)
-  num_processes = mp.cpu_count()
-  print('Number of processes :', num_processes)
-  # files = [
-  #   'SC4042E0_EMG.mat', 
-  #   'SC4042E0_EOG.mat', 
-  #   'SC4042E0_Fpz-Cz.mat',
-  #   'SC4042E0_Pz-Oz.mat',
-  #   'SC4042E0_sleep_states.mat'
-  # ]
+#   results = Parallel(n_jobs=min(num_processes, len(files)), verbose = 0)(delayed(prepare_for_hdf5)(recording, fs, path_to_pt5, epoch_length) for recording in files)
+#   #results = prepare_for_hdf5(files[0], fs, path_to_pt5, epoch_length)
 
-  results = Parallel(n_jobs=min(num_processes, len(files)), verbose = 0)(delayed(prepare_for_hdf5)(recording, fs, path_to_pt5, epoch_length) for recording in files)
-  #results = prepare_for_hdf5(files[0], fs, path_to_pt5, epoch_length)
-
-  for result in results:
-    update_hdf5(result, hdf5_path)
+#   for result in results:
+#     update_hdf5(result, hdf5_path)

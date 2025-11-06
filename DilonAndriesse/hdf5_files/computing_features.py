@@ -123,12 +123,13 @@ def wei_normalizing(data):
 
 
 def aperiodic_fit(window_data, fs):
-    freqs, psd = welch(window_data, fs=fs, nperseg=4096)
+    freqs, psd = welch(window_data, fs=fs, nperseg=1024)
 
     mask = (freqs <= 75)
     freqs, psd = freqs[mask], psd[mask]
+    psd = np.where(psd > 0, psd, 1e-12)
 
-    fm = SpectralModel(min_peak_height=0.05, aperiodic_mode='knee', verbose=False)
+    fm = SpectralModel(min_peak_height=0.05, aperiodic_mode='fixed', verbose=False)
     fm.fit(freqs, psd)
     aperiodic = fm.get_params('aperiodic')[1]
 
@@ -139,7 +140,6 @@ def calc_aperiodic_fit(data, window_size, epoch_length, fs):
   window_data = []
 
   num_windows = len(data) // window_size
-  time_stamps = np.arange(num_windows) * epoch_length
 
   # calculate windows
   for i in range(num_windows):
@@ -148,49 +148,51 @@ def calc_aperiodic_fit(data, window_size, epoch_length, fs):
 
   aperiodic_exponents = Parallel(n_jobs=-1)(delayed(aperiodic_fit)(window, fs) for window in window_data)
 
-  # Thresholding to remove outliers
-  threshold_min = np.percentile(aperiodic_exponents, 2)
-  threshold_max = np.percentile(aperiodic_exponents, 98)
-
-  valid_indices = (aperiodic_exponents >= threshold_min) & (aperiodic_exponents <= threshold_max)
-
-  filtered_exponents = aperiodic_exponents[valid_indices]
-  filtered_timestamps = time_stamps[valid_indices]
-
   #filtered_exponents_z = (filtered_exponents - np.mean(filtered_exponents)) / np.std(filtered_exponents)
-  window_length = 11 if len(filtered_exponents) >= 11 else len(filtered_exponents) | 1  # ensure it's odd
+  window_length = 11 if len(aperiodic_exponents) >= 11 else len(aperiodic_exponents) | 1  # ensure it's odd
   polyorder = 4
 
-  smoothed_exponents = savgol_filter(filtered_exponents, window_length=window_length, polyorder=polyorder)
+  smoothed_exponents = savgol_filter(aperiodic_exponents, window_length=window_length, polyorder=polyorder)
 
   normalized_exponents = 2 * ((smoothed_exponents - min(smoothed_exponents)) /(max(smoothed_exponents) - min(smoothed_exponents))) - 1
 
-  return valid_indices, normalized_exponents
+  return normalized_exponents
 
 
 def calc_dfa(data, window_size, step_size, fs):
   num_windows = (len(data) - window_size) // step_size + 1
 
-  dfa_exponents = []
-  time_stamps = []
+  # fix for issues caused by an extended period of 0 values (a flat line)
+  # suggested by ChatGPT, tested, modified and verified by me
+  dfa_exponents = np.zeros(num_windows)
+  valid_indices = np.zeros(num_windows, dtype=bool)
 
+  # calculate dfa in chunks
   for i in range(num_windows):
       start = i * step_size
       end = start + window_size
       segment = data[start:end]
 
+      # check if segment is all zeros
+      if np.all(segment == 0):
+         continue
+
       _, _, exp_window = compute_fluctuations(segment, fs, n_scales=10,
                                               min_scale=0.05, max_scale=4.0)
 
-      dfa_exponents.append(exp_window)
-      time_stamps.append((start + end) / 2 / fs)
+      dfa_exponents[i] = exp_window
+      valid_indices[i] = True
 
-  dfa_exponents = np.array(dfa_exponents)
-  window_length = 11 if len(dfa_exponents) >= 11 else len(dfa_exponents) | 1  # ensure it's odd
+  valid_exponents = dfa_exponents[valid_indices]
+  valid_exponents = np.array(valid_exponents)
+  window_length = 11 if len(valid_exponents) >= 11 else len(valid_exponents) | 1  # ensure it's odd
   polyorder = 4
 
-  smoothed_dfa = savgol_filter(dfa_exponents, window_length=window_length, polyorder=polyorder)
+  smoothed_dfa = savgol_filter(valid_exponents, window_length=window_length, polyorder=polyorder)
   normalized_dfa = 2 * ((smoothed_dfa - min(smoothed_dfa)) /(max(smoothed_dfa) - min(smoothed_dfa))) - 1
+
+  dfa_exponents[valid_indices] = normalized_dfa
+  normalized_dfa = dfa_exponents
 
   return normalized_dfa
 
