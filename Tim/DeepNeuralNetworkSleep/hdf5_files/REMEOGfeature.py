@@ -122,9 +122,9 @@ if __name__ == "__main__":
     raw_pfc = np.ravel(pfc_data)
 
     scores_files = [
-        "C:/EEG_Data_stage/2/iEEG/edf/2_night1_01_hypnogram.npy",
-        "C:/EEG_Data_stage/2/iEEG/edf/2_night1_02_hypnogram.npy",
-        "C:/EEG_Data_stage/2/iEEG/edf/2_night1_03_hypnogram.npy"
+        "C:/EEG_Data_stage/2/iEEG/scores/2_night1_01_hypnogram.npy",
+        "C:/EEG_Data_stage/2/iEEG/scores/2_night1_02_hypnogram.npy",
+        "C:/EEG_Data_stage/2/iEEG/scores/2_night1_03_hypnogram.npy"
     ]
 
     score_list = [np.load(f) for f in scores_files]
@@ -155,7 +155,11 @@ if __name__ == "__main__":
     rem_features = np.convolve(np.convolve(np.convolve(rem_features, np.ones(5)/5, mode='same'), np.ones(5)/5,
                                            mode='same'), np.ones(5)/5, mode='same')
 
-    b_features = feature_c(EOG1, EOG2, epoch_length, fs)
+    b_features = feature_b(EOG1, EOG2, epoch_length, fs)
+    b_features_log = np.log(b_features)
+    b_features_norm = wei_normalizing(b_features_log)
+    b_features_smoothed = np.convolve(np.convolve(np.convolve(b_features, np.ones(5)/5, mode='same'), np.ones(5)/5,
+                                           mode='same'), np.ones(5)/5, mode='same')
 
     print(len(rem_features))
 
@@ -165,7 +169,7 @@ if __name__ == "__main__":
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True, figsize=(28, 10))
 
     ax1.plot(eog_epochs, rem_features, color='#0072B2', linewidth=1, label='REM Feature')
-    ax2.plot(eog_epochs, b_features, color = '#820340', linewidth=2, label='Slow eye Stage')
+    ax2.plot(eog_epochs, b_features_smoothed, color = '#820340', linewidth=2, label='Slow eye Stage')
 
     ax1.set_ylabel('REM Feature Value', fontsize=14)
     ax3.set_ylabel('Sleep Stage', fontsize=14)

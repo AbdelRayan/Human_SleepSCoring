@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from fooof import FOOOF
 from joblib import Parallel, delayed
 from matplotlib import ticker
-from neurodsp.aperiodic import compute_irasa, fit_irasa
+from neurodsp.aperiodic import compute_irasa, fit_irasa, compute_fluctuations
 from scipy.signal import butter, filtfilt, decimate, find_peaks, welch, savgol_filter
 from scipy.stats import zscore
 from sklearn.preprocessing import StandardScaler
@@ -13,6 +13,7 @@ from sklearn.decomposition import PCA
 import pandas as pd
 from specparam import SpectralModel
 import seaborn as sns
+import EntropyHub as EH
 
 Red = '#d13838'
 Blue = '#127be3'
@@ -335,8 +336,8 @@ def normalised_EMG(EMG_norm, output_dir):
     # Show the plots
     plt.show()
 
-def raw_signals(states, raw_hpc, raw_pfc, pfc_tag, hpc_tag, output_dir):
-    upsampled_states = np.repeat(states, 250 * 10)
+def raw_signals(states, raw_hpc, raw_pfc, pfc_tag, hpc_tag, output_dir, fs, epoch_length):
+    upsampled_states = np.repeat(states, fs * epoch_length)
 
     target_len = len(raw_hpc)
 
@@ -514,14 +515,22 @@ def index_barplot(index_n, index_r, index_w, mapped_scores, output_dir):
     plt.show()
 
 def index_pca(index_n, mapped_scores_old, index_r, index_w, output_dir):
+
     index_w_smoothed = smooth_and_norm(index_w)
     index_r_smoothed = smooth_and_norm(index_r)
     index_n_smoothed = smooth_and_norm(index_n)
-    difference = len(index_n_smoothed) - len(mapped_scores_old)
+
+    difference = len(index_w_smoothed) - len(mapped_scores_old)
+
+    if difference > 0:
+        index_w_smoothed = index_w_smoothed[:-difference]
+        index_r_smoothed = index_r_smoothed[:-difference]
+        index_n_smoothed = index_n_smoothed[:-difference]
+
     arrays = [
-        index_w_smoothed[:-difference],
-        index_r_smoothed[:-difference],
-        index_n_smoothed[:-difference],
+        index_w_smoothed,
+        index_r_smoothed,
+        index_n_smoothed,
         mapped_scores_old
     ]
     # print(f'epochs: {X.shape}')   # rows = number of samples (dots), columns = features
@@ -664,8 +673,8 @@ def aperiodic_fit(pfc_data, states, fs, raw_pfc, output_dir):
 
     return normalized_exponents, smoothed_exponents, valid_states, aperiodic_exponents
 
-def fractal_power_component(states, subject, raw_pfc, output_dir, f_range=(0.3, 30),
-                            fmax = 30, fmin=0.3, sf=250,epoch=10):
+def fractal_power_component(states, subject, raw_pfc, output_dir, epoch, sf, f_range=(0.3, 30),
+                            fmax = 30, fmin=0.3):
 
     subject_fractal_data = {}
     subject_slope_data = {}
@@ -951,7 +960,9 @@ def fractal_slope_vs_hypnogram(subject, smoothed_slopes, output_dir, states, epo
     difference = len(time_axis) - len(smoothed_slopes)
     ### plot 2: smoothed fractal slope
     ########################################################################
-    ax2.plot(time_axis[:-difference], smoothed_slopes, color='black', label='Fractal slope', linewidth=1)
+    if difference > 0:
+        time_axis = time_axis[:-difference]
+    ax2.plot(time_axis, smoothed_slopes, color='black', label='Fractal slope', linewidth=1)
     # color lines based on sleep state
     # Define colors for N3 and REM
     stage_colors = {3: 'green', 4: 'red'}
@@ -990,7 +1001,7 @@ def fractal_slope_vs_hypnogram(subject, smoothed_slopes, output_dir, states, epo
     plt.savefig(f"{output_dir}/fractalslope_vs_hypnogram.svg", format='svg')
     plt.show()
 
-def fooof_report(output_dir, raw_pfc, fs=250):
+def fooof_report(output_dir, raw_pfc, fs):
     freqs, psd = welch(raw_pfc, fs=fs, nperseg=1024)
     # Initialize and fit FOOOF model
     fm = FOOOF(peak_width_limits=[2, 8], aperiodic_mode='fixed')
@@ -1074,6 +1085,348 @@ def aperiodic_fit_violin(valid_states, normalized_exponents, output_dir):
     # Save + show
     plt.savefig(f"{output_dir}/Aperiodic_fit_violin.svg", format="svg")
     plt.show()
+
+def dfa_plot(lfp_PFC, output_dir, length, fs):
+    window_size = step_size = fs*length
+    num_windows = (len(lfp_PFC) - window_size) // step_size + 1
+
+    dfa_exponents = []
+    time_stamps = []
+
+    for i in range(num_windows):
+        start = i * step_size
+        end = start + window_size
+        segment = lfp_PFC[start:end]
+
+        _, _, exp_window = compute_fluctuations(segment, fs, n_scales=10,
+                                                min_scale=0.05, max_scale=4.0)
+
+        dfa_exponents.append(exp_window)
+        time_stamps.append((start + end) / 2 / fs)
+
+    dfa_exponents = np.array(dfa_exponents)
+    window_length = 11 if len(dfa_exponents) >= 11 else len(dfa_exponents) | 1  # ensure it's odd
+    polyorder = 4
+
+    smoothed_dfa = savgol_filter(dfa_exponents, window_length=window_length, polyorder=polyorder)
+    normalized_dfa = 2 * ((smoothed_dfa - min(smoothed_dfa)) / (max(smoothed_dfa) - min(smoothed_dfa))) - 1
+    plt.figure(figsize=(18, 5))
+    plt.plot(time_stamps, normalized_dfa, marker='.', linestyle='-', color=Blue)
+    plt.xlabel('Time (s)')
+    plt.ylabel('DFA Exponent')
+    plt.title('DFA Over Time - RGS14')
+    plt.grid()
+    plt.savefig(f"{output_dir}/DFA_over_time.svg", format='svg')
+    plt.show()
+
+    return normalized_dfa
+
+def dfa_per_state(normalized_dfa, states, output_dir):
+    # --- Convert to numpy arrays ---
+    dfa_values = np.array(normalized_dfa)
+    valid_states = np.array(states).astype(int)
+
+    # --- Trim to same length ---
+    min_len = min(len(dfa_values), len(valid_states))
+    dfa_values = dfa_values[:min_len]
+    valid_states = valid_states[:min_len]
+
+    # --- Remove NaNs ---
+    nan_mask = ~np.isnan(dfa_values)
+    dfa_values = dfa_values[nan_mask]
+    valid_states = valid_states[nan_mask]
+
+    # --- Compute z-scores ---
+    raw_dfa = zscore(dfa_values, nan_policy='omit')
+
+    # --- Smooth ---
+    window_length = min(101, len(raw_dfa) // 2 * 2 + 1)  # must be odd
+    smoothed_dfa = savgol_filter(raw_dfa, window_length, polyorder=5, mode='interp')
+    smoothed_dfa = zscore(smoothed_dfa, nan_policy='omit')
+
+    # --- Compute mean DFA per state ---
+    mean_dfa_per_state = {}
+    smoothed_mean_dfa_per_state = {}
+
+    for state in np.unique(valid_states):
+        mask = valid_states == state
+        mean_dfa_per_state[state] = np.nanmean(raw_dfa[mask])
+        smoothed_mean_dfa_per_state[state] = np.nanmean(smoothed_dfa[mask])
+
+    print("Means per state:", mean_dfa_per_state)
+
+    # --- Prepare for plotting ---
+    stages_sorted = sorted(mean_dfa_per_state.keys())
+    mean_dfas = [mean_dfa_per_state[s] for s in stages_sorted]
+    smoothed_mean_dfas = [smoothed_mean_dfa_per_state[s] for s in stages_sorted]
+
+    # --- Plot ---
+    plt.figure(figsize=(7, 6))
+    plt.grid(axis='x', color='lightgray', linestyle='--', linewidth=0.5, zorder=0)
+    plt.axhline(0, color='gray', linewidth=1, alpha=0.5, zorder=0)
+
+    plt.scatter(stages_sorted, mean_dfas, color='black', marker='s', s=60, label='raw DFA', zorder=2)
+    plt.scatter(stages_sorted, smoothed_mean_dfas, color='green', marker='s', s=30, label='smoothed DFA', zorder=2)
+    plt.plot(stages_sorted, mean_dfas, color='black', linestyle='--', alpha=0.6, zorder=2)
+    plt.plot(stages_sorted, smoothed_mean_dfas, color='green', linestyle='--', alpha=0.6, zorder=2)
+
+    plt.xticks(stages_sorted, ['W', 'N1', 'N2', 'N3', 'REM'])
+    plt.ylabel('Z-normalized DFA exponent')
+    plt.xlabel('Sleep Stage')
+    plt.title('DFA per State')
+    plt.ylim(-2, 2)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/dfa_per_state.svg", format="svg")
+    plt.show()
+
+def dfa_violin_and_bar(normalized_dfa, states, output_dir):
+    min_len = min(len(normalized_dfa), len(states))
+    normalized_dfa = normalized_dfa[:min_len]
+    states= states[:min_len]
+    colors = ['royalblue', 'teal', 'purple', 'forestgreen', 'firebrick']
+    df = pd.DataFrame({'state': states, 'dfa': normalized_dfa})
+    summary = df.groupby('state')['dfa'].agg(['mean', 'sem']).reset_index()
+    print(summary)
+    plt.figure(figsize=(7, 5))
+    plt.bar(summary['state'], summary['mean'], yerr=summary['sem'],
+            capsize=5, color=[colors[int(s)] for s in summary['state']], edgecolor='black', zorder=2, alpha=0.6)
+    plt.xticks([0, 1, 2, 3, 4], ['W', 'N1', 'N2', 'N3', 'REM'])
+    plt.ylim(-1.1, 1.1)
+    plt.xlabel('Sleep State')
+    plt.ylabel('Normalized mean DFA')
+    plt.title('DFA per Sleep State')
+    plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/DFA_bar.svg", format='svg')
+    plt.show()
+    plt.figure(figsize=(7, 5))
+    # Create a boxplot
+    # Build data in exact order 0..4
+    data_for_box = [df.loc[df['state'] == s, 'dfa'].values for s in range(5)]
+    counts = [len(d) for d in data_for_box]
+
+    print("Counts per state (0..4):", counts)
+    print("Data types:", df['state'].dtype)
+
+    colors = {0: 'royalblue', 1: 'teal', 2: 'purple', 3: 'forestgreen', 4: 'firebrick'}
+    labels = ['W', 'N1', 'N2', 'N3', 'REM']
+    all_states = list(range(5))
+
+    # Build data in exact order 0..4
+    data_for_box = [df.loc[df['state'] == s, 'dfa'].values for s in all_states]
+    counts = [len(d) for d in data_for_box]
+    print("Counts per state (0..4):", counts)
+    print("Unique states present:", sorted(df['state'].unique()))
+
+    # Make a copy of df for plotting convenience
+    df_plot = df.copy()
+    df_plot['state'] = df_plot['state'].astype(int)
+
+    plt.figure(figsize=(8, 6))
+
+    # seaborn expects the state column to be categorical strings or ints; we keep ints but pass order
+    # Create palette list in the 0..4 order
+    palette = [colors[s] for s in all_states]
+
+    # Violinplot - drop NaNs automatically
+    ax = sns.violinplot(
+        x='state', y='dfa', data=df_plot,
+        order=all_states,
+        palette=palette,
+        cut=0,  # don't show tails beyond data
+        bw='scott',  # bandwidth estimator (tune if needed)
+        inner=None  # we'll overlay medians ourselves
+    )
+
+    # overlay a stripplot (points) for verification (jittered)
+    sns.stripplot(x='state', y='dfa', data=df_plot, order=all_states,
+                  color='k', size=1.5, jitter=0.15, alpha=0.3)
+
+    # compute medians and plot
+    medians = [np.nanmedian(d) if len(d) > 0 else np.nan for d in data_for_box]
+    for i, m in enumerate(medians):
+        if not np.isnan(m):
+            plt.plot(i, m, marker='o', color='white', markeredgecolor='black', markersize=6, zorder=10)
+
+    # cosmetic
+    ax.set_xticklabels(labels)
+    ax.set_xlabel('Sleep State')
+    ax.set_ylabel('Normalized mean DFA')
+    ax.set_ylim(-1.1, 1.1)
+    ax.set_title('DFA per Sleep State (violin)')
+    plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/dfa_violin.svg", format="svg")
+    plt.show()
+
+def mse_plot(lfp_PFC, output_dir, length, fs):
+    Mobj = EH.MSobject('IncrEn', m=2, R=3, Norm=True)
+    window_size = step_size = fs*length
+
+    num_windows = (len(lfp_PFC) - window_size) // step_size + 1
+
+    mse_values = []
+    time_stamps_mse = []
+
+    for i in range(num_windows):
+        start = i * step_size
+        end = start + window_size
+        segment = lfp_PFC[start:end]
+
+        MSx, _ = EH.MSEn(segment, Mobj, Scales=2, Methodx='modified')
+
+        mse_values.append(np.mean(MSx))
+        time_stamps_mse.append((start + end) / 2 / fs)
+
+    mse_values = np.array(mse_values)
+    time_stamps_mse = np.array(time_stamps_mse)
+    window_length = 11 if len(mse_values) >= 11 else len(mse_values) | 1  # ensure it's odd
+    polyorder = 4
+
+    smoothed_mse = savgol_filter(mse_values, window_length=window_length, polyorder=polyorder)
+    normalized_mse = 2 * ((smoothed_mse - min(smoothed_mse)) / (max(smoothed_mse) - min(smoothed_mse))) - 1
+
+    plt.figure(figsize=(18, 5))
+    plt.plot(time_stamps_mse, normalized_mse, marker='.', linestyle='-', color=Red)
+    plt.xlabel('Time (s)')
+    plt.ylabel('MSE')
+    plt.title('MSE Over Time (10-sec Windows) - RGS14')
+    plt.grid()
+    plt.savefig(f"{output_dir}/MSE_10s.svg", format='svg')
+    plt.show()
+    return normalized_mse
+
+def mse_per_state(normalized_mse, states, output_dir):
+    min_len = min(len(normalized_mse), len(states))
+    normalized_mse = normalized_mse[:min_len]
+    states= states[:min_len]
+    # --- Convert to arrays ---
+    mse_values = np.array(normalized_mse)
+    valid_states = np.array(states).astype(int)
+
+    # --- Remove any NaNs (safety) ---
+    nan_mask = ~np.isnan(mse_values)
+    mse_values = mse_values[nan_mask]
+    valid_states = valid_states[nan_mask]
+
+    # --- Compute z-scores ---
+
+    raw_mse = zscore(mse_values, nan_policy='omit')
+
+    # --- Smooth values ---
+    window_length = min(101, len(raw_mse) // 2 * 2 + 1)  # must be odd
+    smoothed_mse = savgol_filter(raw_mse, window_length, polyorder=5, mode='interp')
+    smoothed_mse = zscore(smoothed_mse, nan_policy='omit')
+
+    # --- Compute mean MSE per sleep state ---
+    mean_mse_per_state = {}
+    smoothed_mean_mse_per_state = {}
+
+    for state in np.unique(valid_states):
+        mask = valid_states == state
+        mean_mse_per_state[state] = np.nanmean(raw_mse[mask])
+        smoothed_mean_mse_per_state[state] = np.nanmean(smoothed_mse[mask])
+
+    print("Mean MSE per state:", mean_mse_per_state)
+
+    # --- Prepare for plotting ---
+    stages_sorted = sorted(mean_mse_per_state.keys())
+    mean_mses = [mean_mse_per_state[s] for s in stages_sorted]
+    smoothed_mean_mses = [smoothed_mean_mse_per_state[s] for s in stages_sorted]
+
+    # --- Plot MSE per sleep state ---
+    plt.figure(figsize=(7, 6))
+    plt.grid(axis='x', color='lightgray', linestyle='--', linewidth=0.5, zorder=0)
+    plt.axhline(0, color='gray', linewidth=1, alpha=0.5, zorder=0)
+
+    plt.scatter(stages_sorted, mean_mses, color='black', marker='s', s=60, label='raw MSE', zorder=2)
+    plt.scatter(stages_sorted, smoothed_mean_mses, color='purple', marker='s', s=30, label='smoothed MSE', zorder=2)
+    plt.plot(stages_sorted, mean_mses, color='black', linestyle='--', alpha=0.6, zorder=2)
+    plt.plot(stages_sorted, smoothed_mean_mses, color='purple', linestyle='--', alpha=0.6, zorder=2)
+
+    plt.xticks(stages_sorted, ['W', 'N1', 'N2', 'N3', 'REM'])
+    plt.ylabel('Z-normalized MSE')
+    plt.xlabel('Sleep Stage')
+    plt.title('MSE per Sleep State')
+    plt.ylim(-2, 2)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/mse_per_state.svg", format="svg")
+    plt.show()
+
+def mse_violin_and_bar(normalized_mse, states, output_dir):
+    min_len = min(len(normalized_mse), len(states))
+    normalized_mse = normalized_mse[:min_len]
+    states= states[:min_len]
+    df = pd.DataFrame({'state': states, 'mse': normalized_mse})
+    summary = df.groupby('state')['mse'].agg(['mean', 'sem']).reset_index()
+    colors = ['royalblue', 'teal', 'purple', 'forestgreen', 'firebrick']
+    labels = ['W', 'N1', 'N2', 'N3', 'REM']
+    print(summary)
+    plt.figure(figsize=(7, 5))
+    plt.bar(summary['state'], summary['mean'], yerr=summary['sem'],
+            capsize=5, color=[colors[int(s)] for s in summary['state']], edgecolor='black', zorder=2, alpha=0.6)
+    plt.xticks([0, 1, 2, 3, 4], ['W', 'N1', 'N2', 'N3', 'REM'])
+    plt.ylim(-1.1, 1.1)
+    plt.xlabel('Sleep State')
+    plt.ylabel('Normalized mean MSE')
+    plt.title('MSE per Sleep State')
+    plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/MSE_bar.svg", format='svg')
+    plt.show()
+    plt.figure(figsize=(7, 5))
+
+    # --- Inputs ---
+    colors = {0: 'royalblue', 1: 'teal', 2: 'purple', 3: 'forestgreen', 4: 'firebrick'}
+    labels = ['W', 'N1', 'N2', 'N3', 'REM']
+    all_states = list(range(5))
+
+    # Build data for each state
+    data_for_plot = [df.loc[df['state'] == s, 'mse'].values for s in all_states]
+    medians = [np.nanmedian(d) if len(d) > 0 else np.nan for d in data_for_plot]
+    print("Counts per state (0..4):", [len(d) for d in data_for_plot])
+    print("Unique states present:", sorted(df['state'].unique()))
+
+    # Prepare df copy for plotting
+    df_plot = df.copy()
+    df_plot['state'] = df_plot['state'].astype(int)
+
+    # --- Seaborn violinplot ---
+    plt.figure(figsize=(8, 6))
+    palette = [colors[s] for s in all_states]
+
+    ax = sns.violinplot(
+        x='state', y='mse', data=df_plot,
+        order=all_states,
+        palette=palette,
+        cut=0,  # no tails beyond data
+        bw='scott',  # bandwidth estimator
+        inner=None  # overlay medians manually
+    )
+
+    # Overlay jittered points
+    sns.stripplot(x='state', y='mse', data=df_plot, order=all_states,
+                  color='k', size=1.5, jitter=0.15, alpha=0.3)
+
+    # Overlay medians
+    for i, m in enumerate(medians):
+        if not np.isnan(m):
+            plt.plot(i, m, marker='o', color='white', markeredgecolor='black', markersize=6, zorder=10)
+
+    # Cosmetics
+    ax.set_xticklabels(labels)
+    ax.set_xlabel('Sleep State')
+    ax.set_ylabel('Normalized mean MSE')
+    ax.set_ylim(-1.1, 1.1)
+    ax.set_title('MSE per Sleep State (violin)')
+    plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/MSE_violin.svg", format='svg')
+    plt.show()
+
+
 
 
 

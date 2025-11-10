@@ -100,20 +100,14 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=Non
 
     # EOG
     if "EOG1" in all_channels and "EOG2" in all_channels:
-        bipolar_data.append(all_channels["EOG1"] - all_channels["EOG2"])
         bipolar_data.append(all_channels["EOG1"])
         bipolar_data.append(all_channels["EOG2"])
-        bipolar_names.append("EOG1-EOG2")
         bipolar_names.append("EOG1")
         bipolar_names.append("EOG2")
 
     if "EMG1" in all_channels and "EMG2" in all_channels:
         bipolar_data.append(all_channels["EMG1"] - all_channels["EMG2"])
-        bipolar_data.append(all_channels["EMG1"])
-        bipolar_data.append(all_channels["EMG2"])
         bipolar_names.append("EMG1-EMG2")
-        bipolar_names.append("EMG1")
-        bipolar_names.append("EMG2")
 
     bipolar_data = np.vstack(bipolar_data)
 
