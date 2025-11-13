@@ -461,7 +461,8 @@ def extract_index_values_per_state(index_n, index_r, index_w, mapped_scores):
         'r': smooth_and_norm(index_r),
         'n': smooth_and_norm(index_n)
     }
-
+    unique_states = np.unique(mapped_scores)
+    print("Unique mapped states:", unique_states)
     # Map numerical sleep scores to labels
     score_labels = {0: 'Wake', 1: 'N1', 2: 'N2', 3: 'N3', 4: 'REM'}
     mapped_scores = [score_labels[s] for s in mapped_scores if s in score_labels]
@@ -620,7 +621,7 @@ def prepare_aperiodic_violin_data(valid_states, normalized_exponents):
 
     return df_plot, data_for_violin, all_states, labels
 
-def prepare_dfa_violin_data(valid_states, normalized_exponents, fs, length, lfp_PFC):
+def prepare_dfa_violin_data(valid_states, fs, length, lfp_PFC):
     """
     Prepare data for violin plot of dfa per sleep state.
 
@@ -655,8 +656,10 @@ def prepare_dfa_violin_data(valid_states, normalized_exponents, fs, length, lfp_
 
     smoothed_dfa = savgol_filter(dfa_exponents, window_length=window_length, polyorder=polyorder)
     normalized_dfa = 2 * ((smoothed_dfa - min(smoothed_dfa)) / (max(smoothed_dfa) - min(smoothed_dfa))) - 1
-
-    df = pd.DataFrame({'state': valid_states, 'dfa': normalized_exponents})
+    min_length = min(len(normalized_dfa), len(valid_states))
+    valid_states = valid_states[:min_length]
+    normalized_dfa = normalized_dfa[:min_length]
+    df = pd.DataFrame({'state': valid_states, 'dfa': normalized_dfa})
 
     # Build data per state for violin plotting
     data_for_violin = [df.loc[df['state'] == s, 'dfa'].values for s in all_states]
@@ -668,8 +671,7 @@ def prepare_dfa_violin_data(valid_states, normalized_exponents, fs, length, lfp_
     df_plot = df.copy()
     df_plot['state'] = df_plot['state'].astype(int)
 
-    return df_plot, data_for_violin, all_states, labels
-
+    return df_plot, data_for_violin, all_states, labels, normalized_dfa
 
 def plot_aperiodic_violin(df_plot, data_for_violin, all_states, labels, output_dir):
     """
@@ -1638,7 +1640,7 @@ def mse_plot(lfp_PFC, output_dir, length, fs):
     # plt.show()
     return normalized_mse
 
-def prepare_mse_violin_data(valid_states, normalized_exponents, fs, length, lfp_PFC):
+def prepare_mse_violin_data(valid_states, fs, length, lfp_PFC):
     """
     Prepare data for violin plot of mse per sleep state.
 
@@ -1675,8 +1677,10 @@ def prepare_mse_violin_data(valid_states, normalized_exponents, fs, length, lfp_
 
     smoothed_mse = savgol_filter(mse_values, window_length=window_length, polyorder=polyorder)
     normalized_mse = 2 * ((smoothed_mse - min(smoothed_mse)) / (max(smoothed_mse) - min(smoothed_mse))) - 1
-
-    df = pd.DataFrame({'state': valid_states, 'mse': normalized_exponents})
+    min_length = min(len(normalized_mse), len(valid_states))
+    valid_states = valid_states[:min_length]
+    normalized_mse = normalized_mse[:min_length]
+    df = pd.DataFrame({'state': valid_states, 'mse': normalized_mse})
 
     # Build data per state for violin plotting
     data_for_violin = [df.loc[df['state'] == s, 'mse'].values for s in all_states]
@@ -1688,7 +1692,7 @@ def prepare_mse_violin_data(valid_states, normalized_exponents, fs, length, lfp_
     df_plot = df.copy()
     df_plot['state'] = df_plot['state'].astype(int)
 
-    return df_plot, data_for_violin, all_states, labels
+    return df_plot, data_for_violin, all_states, labels, normalized_mse
 
 def mse_per_state(normalized_mse, states, output_dir):
     # --- Trim to same length ---
@@ -1829,6 +1833,36 @@ def mse_violin_and_bar(normalized_mse, states, output_dir):
     # plt.show()
 
 
+def Index_1(delta, gamma, EMG):
+    index_1 = np.array([])
+    for i in range(len(delta)):
+        value = (EMG[i] * gamma[i]) / (delta[i])
+        index_1 = np.append(index_1, [value])
+    return index_1
+
+
+def Index_2(delta, theta, sigma):
+    index_2 = np.array([])
+    for i in range(len(delta)):
+        value = (sigma[i] * delta[i]) / (theta[i])
+        index_2 = np.append(index_2, [value])
+    return index_2
+
+
+def Index_3(delta, theta, gamma):
+    index_3 = np.array([])
+    for i in range(len(delta)):
+        value = (theta[i] * gamma[i]) / (delta[i])
+        index_3 = np.append(index_3, [value])
+    return index_3
+
+
+def Index_4(delta, theta):
+    index_4 = np.array([])
+    for i in range(len(delta)):
+        value = delta[i] / theta[i]
+        index_4 = np.append(index_4, [value])
+    return index_4
 
 
 

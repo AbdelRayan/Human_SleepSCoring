@@ -81,17 +81,13 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=Non
     # EEG channels vs Cz
     if channel_select is not None and "Cz" in all_channels:
         for ch in channel_select :
-            if ch in all_channels and ch not in ['TR01', 'TL01', 'TR10', 'TL10']:
+            if ch in all_channels and ch in ['T5', 'T6']:
                 new_name = f"{ch}-Cz"
                 bipolar_data.append(all_channels[ch] - all_channels["Cz"])
                 bipolar_names.append(new_name)
-            elif ch in ['TL01', 'TR10']:
-                if ch == "TL01":
-                    bipolar_data.append(all_channels[ch])
-                    bipolar_names.append("TL01")
-                else:
-                    bipolar_data.append(all_channels[ch])
-                    bipolar_names.append("TR10")
+            else:
+                bipolar_data.append(all_channels[ch])
+                bipolar_names.append(ch)
     else:
         for channel in all_channels:
             if channel not in ["Cb1", "Cb2", "EKG1", "EKG2", "EOG1", "EOG2", "EMG1", "EMG2"]:
