@@ -15,6 +15,19 @@ from specparam import SpectralModel
 import seaborn as sns
 import EntropyHub as EH
 import os
+import sys
+from contextlib import contextmanager
+
+@contextmanager
+def suppress_stdout():
+    """Temporarily suppress all stdout printing."""
+    with open(os.devnull, "w") as devnull:
+        old_stdout = sys.stdout
+        sys.stdout = devnull
+        try:
+            yield
+        finally:
+            sys.stdout = old_stdout
 
 Red = '#d13838'
 Blue = '#127be3'
@@ -729,28 +742,28 @@ def plot_aperiodic_violin(df_plot, data_for_violin, all_states, labels, output_d
 def aperiodic_fit(pfc_data, states, fs, raw_pfc, output_dir):
     # --- Parameters ---
     window_size = 10 * fs
-    lfp_PFC = np.ravel(pfc_data)  # flatten in case it's 2D
+    lfp_PFC = np.ravel(pfc_data)
     sleep_states = states.flatten()
     step_size = window_size
 
     num_windows = len(lfp_PFC) // window_size
-    time_stamps = np.arange(num_windows) * 10  # adjust timing scale if needed
-    window_length = 11  # for Savitzky-Golay
+    time_stamps = np.arange(num_windows) * 10  # adjust timing if needed
+    window_length = 11
     polyorder = 4
 
     # --- Prepare windows ---
-    window_data = [raw_pfc[i * window_size:(i + 1) * window_size] for i in range(num_windows)]
+    window_data = [raw_pfc[i * window_size:(i + 1) * window_size]
+                   for i in range(num_windows)]
 
-    # --- Diagnostic aperiodic fit function ---
+    # --- Diagnostic safe-fit wrapper ---
     def safe_aperiodic_fit(window, idx, aperiodic_fit_fn):
         try:
-            # Skip flat/empty windows
             if len(window) == 0 or np.std(window) < 1e-12:
                 return np.nan, "flat_or_empty"
+
             if not np.all(np.isfinite(window)):
                 return np.nan, "nonfinite_input"
 
-            # Compute exponent
             exp = aperiodic_fit_fn(window)
             if not np.isfinite(exp):
                 return np.nan, "nonfinite_exponent"
@@ -760,75 +773,96 @@ def aperiodic_fit(pfc_data, states, fs, raw_pfc, output_dir):
         except Exception as e:
             return np.nan, f"exception: {str(e)}"
 
+    # --- Compute exponent ---
     def aperiodic_fit(window_data):
         freqs, psd = welch(window_data, fs=fs, nperseg=1024)
         mask = (freqs <= 100)
         freqs, psd = freqs[mask], psd[mask]
-        fm = SpectralModel(min_peak_height=0.05, aperiodic_mode='fixed', verbose=False)
+        fm = SpectralModel(min_peak_height=0.05,
+                           aperiodic_mode='fixed', verbose=False)
         fm.fit(freqs, psd)
         aperiodic = fm.get_params('aperiodic')[1]
         return aperiodic
 
-    # --- Compute aperiodic exponents in parallel ---
+    # --- Run fits in parallel ---
     results = Parallel(n_jobs=-1)(
-        delayed(safe_aperiodic_fit)(w, i, aperiodic_fit) for i, w in enumerate(window_data)
+        delayed(safe_aperiodic_fit)(w, i, aperiodic_fit)
+        for i, w in enumerate(window_data)
     )
 
-    # --- Extract exponents and statuses ---
+    # Extract exponent values and diagnostic labels
     aperiodic_exponents, statuses = zip(*results)
     aperiodic_exponents = np.array(aperiodic_exponents)
-    if len(aperiodic_exponents) > len(states):
-        print(len(aperiodic_exponents) - len(states))
-        for n in range(0, len(aperiodic_exponents) - len(states)):
-            states = np.append(states, states[len(states) - 1])
 
-    # --- Optional: report problem windows ---
+    # --- Ensure states and timestamps match number of windows ---
+    if len(aperiodic_exponents) > len(states):
+        diff = len(aperiodic_exponents) - len(states)
+        print(f"Padded {diff} state values.")
+        for _ in range(diff):
+            states = np.append(states, states[-1])
+
+    states = states[:len(aperiodic_exponents)]
+    time_stamps = time_stamps[:len(aperiodic_exponents)]
+
+    # --- Report problems ---
     problem_windows = [(i, s) for i, s in enumerate(statuses) if s != "ok"]
     print(f"Problematic windows: {len(problem_windows)}")
     print("First 10 problematic windows:", problem_windows[:10])
 
-    # --- Replace NaNs with median of valid exponents for plotting ---
-    valid_mask = np.isfinite(aperiodic_exponents)
-    median_val = np.median(aperiodic_exponents[valid_mask])
-    aperiodic_exponents[~valid_mask] = median_val
+    # ==============================================================
+    #   BETTER SOLUTION: Repair invalid exponent values in place
+    # ==============================================================
 
-    # --- Thresholding to remove extreme outliers ---
-    threshold_min = np.percentile(aperiodic_exponents, 2)
-    threshold_max = np.percentile(aperiodic_exponents, 98)
-    valid_indices = (aperiodic_exponents >= threshold_min) & (aperiodic_exponents <= threshold_max)
+    # Use pandas for interpolation mechanics
+    exp_series = pd.Series(aperiodic_exponents)
 
-    # --- Make lengths consistent before indexing ---
-    min_len = min(len(valid_indices), len(states), len(time_stamps), len(aperiodic_exponents))
+    # 1. Replace NaNs via interpolation
+    exp_series = exp_series.interpolate(method='linear', limit_direction='both')
 
-    # Trim all arrays to the same minimum length
-    valid_indices = valid_indices[:min_len]
-    states = states[:min_len]
-    time_stamps = time_stamps[:min_len]
-    aperiodic_exponents = aperiodic_exponents[:min_len]
+    # 2. Fill any remaining NaNs using global median
+    global_median = exp_series.median()
+    exp_series = exp_series.fillna(global_median)
 
-    # --- Apply filtering safely ---
-    filtered_exponents = aperiodic_exponents[valid_indices]
-    filtered_timestamps = time_stamps[valid_indices]
-    valid_states = states[valid_indices]
+    # 3. Soft thresholding (clip, do NOT delete indexes)
+    threshold_min = np.percentile(exp_series, 2)
+    threshold_max = np.percentile(exp_series, 98)
+    exp_series = exp_series.clip(lower=threshold_min, upper=threshold_max)
 
-    # --- Smooth and normalize ---
-    window_length_sg = window_length if len(filtered_exponents) >= window_length else len(filtered_exponents) | 1
-    smoothed_exponents = savgol_filter(filtered_exponents, window_length=window_length_sg, polyorder=polyorder)
-    normalized_exponents = 2 * ((smoothed_exponents - smoothed_exponents.min()) / (
-                smoothed_exponents.max() - smoothed_exponents.min())) - 1
+    # Final repaired array
+    repaired_exponents = exp_series.to_numpy()
+
+    # --- Smooth + normalize (all indices preserved) ---
+    window_length_sg = (
+        window_length
+        if len(repaired_exponents) >= window_length
+        else (len(repaired_exponents) | 1)
+    )
+
+    smoothed_exponents = savgol_filter(
+        repaired_exponents,
+        window_length=window_length_sg,
+        polyorder=polyorder
+    )
+
+    # Normalization to [-1, 1]
+    normalized_exponents = (
+        2 * ((smoothed_exponents - smoothed_exponents.min()) /
+             (smoothed_exponents.max() - smoothed_exponents.min()))
+        - 1
+    )
 
     # --- Plot ---
     plt.figure(figsize=(18, 5))
-    plt.plot(filtered_timestamps, normalized_exponents, marker='.', linestyle='-', color=DarkBlue)
+    plt.plot(time_stamps, normalized_exponents,
+             marker='.', linestyle='-', color=DarkBlue)
     plt.xlabel('Time (s)')
     plt.ylabel('Aperiodic Exponent')
-    plt.title('Normalized Aperiodic Fit Over Time (With Threshold)')
+    plt.title('Normalized Aperiodic Fit Over Time (Repaired, No Dropping)')
     plt.grid(True)
     plt.tight_layout()
     plt.savefig(f"{output_dir}/Aperiodic_fit.svg", format='svg')
-    # plt.show()
 
-    return normalized_exponents, smoothed_exponents, valid_states, aperiodic_exponents
+    return normalized_exponents, smoothed_exponents, states, repaired_exponents
 
 def fractal_power_component(states, subject, raw_pfc, output_dir, epoch, sf, f_range=(0.3, 30),
                             fmax = 30, fmin=0.3):
@@ -1936,8 +1970,8 @@ def prepare_mse_violin_data(valid_states, fs, length, lfp_PFC):
         start = i * step_size
         end = start + window_size
         segment = lfp_PFC[start:end]
-
-        MSx, _ = EH.MSEn(segment, Mobj, Scales=2, Methodx='modified')
+        with suppress_stdout():
+            MSx, _ = EH.MSEn(segment, Mobj, Scales=2, Methodx='modified')
 
         mse_values.append(np.mean(MSx))
         time_stamps_mse.append((start + end) / 2 / fs)
