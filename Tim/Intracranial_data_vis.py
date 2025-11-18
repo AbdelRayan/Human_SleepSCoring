@@ -5,45 +5,49 @@ import edfio
 import numpy as np
 from mne.export import export_raw
 import pandas as pd
+import Sleep_Scripts.Practical_scripts as P
 
 files = [
-    "D:/converted_sleep_data/2/con_full/2_night1_01.vhdr",
-    "D:/converted_sleep_data/2/con_full/2_night1_02.vhdr",
-    "D:/converted_sleep_data/2/con_full/2_night1_03.vhdr"
+    "D:/EEG_Data_stage/135/iEEG/converted_test_electrodes/135_night1_02.vhdr"
 ]
 
 raw_list = [mne.io.read_raw_brainvision(f, preload=True) for f in files]
 
 raw = mne.concatenate_raws(raw_list)
+print(raw.ch_names)
 
-scores_files = [
-    "D:/converted_sleep_data/2/stages/2_night1_01_hypnogram.npy",
-    "D:/converted_sleep_data/2/stages/2_night1_02_hypnogram.npy",
-    "D:/converted_sleep_data/2/stages/2_night1_03_hypnogram.npy"
-]
+# scores_files = [
+#     "D:/EEG_Data_stage/2/iEEG/edf/2_night1_02_hypnogram.npy",
+#     "D:/EEG_Data_stage/2/iEEG/edf/2_night1_03_hypnogram.npy"
+# ]
+#
+# score_list = [np.load(f) for f in scores_files]
+# hypno = np.concatenate(score_list)
 
-score_list = [np.load(f) for f in scores_files]
-hypno = np.concatenate(score_list)
-
-# raw = mne.io.read_raw_brainvision("D:/converted_sleep_data/2/con_full/2_night1_03.vhdr")
+# raw = mne.io.read_raw_brainvision("D:/Intercranial_sleep_data/2/iEEG/converted/2_night1_02.vhdr")
 
 # raw = mne.io.read_raw_edf("2_night1_03.edf")
-# hypno = np.load("D:/converted_sleep_data/2/stages/2_night1_03_hypnogram.npy")
-hypno = hypno.astype(int)
-eeg_duration = raw.n_times / raw.info['sfreq']
-n_epochs = int(eeg_duration // (30/4))  # assuming 30s epochs
-hypno = hypno[:n_epochs]            # crop to EEG length if needed
-stage_mapping = {0: "Wake", 1: "N1", 2: "N2", 3: "N3", 4: "REM"}
-description = [stage_mapping[s] for s in hypno]
-onset = np.arange(len(hypno)) * 30/4  # 30s per epoch
-duration = np.repeat(30/4, len(hypno))
-
-annotations = mne.Annotations(onset, duration, description)
-raw.set_annotations(annotations)
-raw.plot(duration=300,
-    scalings=dict(eeg=1e-4),  # adjust scaling if needed
-    block=True                # interactive plotting
-)
+# hypno = np.load("D:/converted_sleep_data/2/combined_nights/edf_files/night1_hypnogram_30s.npy")
+# hypno = hypno.astype(int)
+# eeg_duration = raw.n_times / raw.info['sfreq']
+# n_epochs = int(eeg_duration // (10))  # assuming 30s epochs
+# hypno = hypno[:n_epochs]            # crop to EEG length if needed
+# stage_mapping = {0: "Wake", 1: "N1", 2: "N2", 3: "N3", 4: "REM"}
+# description = [stage_mapping[s] for s in hypno]
+# onset = np.arange(len(hypno)) * 10  # 30s per epoch
+# duration = np.repeat(10, len(hypno))
+# #
+# annotations = mne.Annotations(onset, duration, description)
+# raw.set_annotations(annotations)
+#
+# raw = P.convert_channel_types(raw)
+#
+#
+# fig = raw.plot(duration=120,
+#     scalings=dict(eeg=1e-4)             # interactive plotting
+# )
+# fig.subplots_adjust(top=0.9)
+# plt.show(block=True)
 # raw = mne.io.read_raw_brainvision("D:/converted_sleep_data/2/con_full/2_night1_02.vhdr")
 # raw_full.save("night1_full-raw.fif", overwrite=True)
 #
@@ -72,80 +76,116 @@ raw.plot(duration=300,
 #
 
 # np.save("D:/converted_sleep_data/2/stages/night1_full_score.npy", full_score)
-
-raw.set_channel_types({
-    'TBAR1': 'eeg',
-    'TBAR2': 'eeg',
-    'TBAR3': 'eeg',
-    'TBAR4': 'eeg',
-    'TBPR1': 'eeg',
-    'TBPR2': 'eeg',
-    'TBPR3': 'eeg',
-    'TBPR4': 'eeg',
-    'TLR01': 'eeg',
-    'TLR02': 'eeg',
-    'TLR03': 'eeg',
-    'TLR04': 'eeg',
-    'TLR05': 'eeg',
-    'TLR06': 'eeg',
-    'TBAL1': 'eeg',
-    'TBAL2': 'eeg',
-    'TBAL3': 'eeg',
-    'TBAL4': 'eeg',
-    'TBPL1': 'eeg',
-    'TBPL2': 'eeg',
-    'TBPL3': 'eeg',
-    'TBPL4': 'eeg',
-    'TLL01': 'eeg',
-    'TLL02': 'eeg',
-    'TLL03': 'eeg',
-    'TLL04': 'eeg',
-    'TLL05': 'eeg',
-    'TLL06': 'eeg',
-    'TR01': 'eeg',
-    'TR02': 'eeg',
-    'TR03': 'eeg',
-    'TR04': 'eeg',
-    'TR05': 'eeg',
-    'TR06': 'eeg',
-    'TR07': 'eeg',
-    'TR08': 'eeg',
-    'TR09': 'eeg',
-    'TR10': 'eeg',
-    'TL01':'eeg',
-    'TL02':'eeg',
-    'TL03':'eeg',
-    'TL04':'eeg',
-    'TL05':'eeg',
-    'TL06':'eeg',
-    'TL07':'eeg',
-    'TL08':'eeg',
-    'TL09':'eeg',
-    'TL10':'eeg',
-    'EKG1':'ecg',
-    'EKG2':'ecg',
-    'T5':'eeg',
-    'T6':'eeg',
-    'C3':'eeg',
-    'C4':'eeg',
-    'Cz':'eeg',
-    'Oz':'eeg',
-    'EOG1':'eog',
-    'EOG2':'eog',
-    'EMG1':'emg',
-    'EMG2':'emg'
-})
-
-
-
-# sls = yasa.SleepStaging(raw, eeg_name="Cz")
+# raw.set_channel_types({
+#     'C3-Cz':'eeg',
+#     'Oz-Cz':'eeg',
+#     'EOG1-EOG2':'eog',
+#     'EMG1':'emg'
+# })
+# raw = P.convert_channel_types(raw.drop_channels(['Cb', 'T', 'C']))
 #
+# sls = yasa.SleepStaging(raw, eeg_name="Oz-Cz", eog_name="EOG1-EOG2", emg_name="EMG1-EMG2")
+# #
 # hypno_pred = sls.predict()  # Predict the sleep stages
-#
+# #
 # hypno_pred = yasa.hypno_str_to_int(hypno_pred)  # Convert "W" to 0, "N1" to 1, etc
+# #
+# # yasa.plot_hypnogram(hypno_pred)
+# # plt.show(block=True)
 #
-# yasa.plot_hypnogram(hypno_pred)
+# # Sampling frequency
+# sf = raw.info["sfreq"]
+#
+# # Each epoch is 30 seconds long by default
+# epoch_length = 30
+#
+# # Create onset times for each epoch
+# onset = np.arange(0, len(hypno_pred) * epoch_length, epoch_length)
+#
+# # Map stage integers back to readable strings for annotations
+# stage_map = {0: "W", 1: "N1", 2: "N2", 3: "N3", 4: "REM"}
+# descriptions = [stage_map[int(stage)] for stage in hypno_pred]
+#
+# # Create MNE Annotations
+# annotations = mne.Annotations(
+#     onset=onset,
+#     duration=[epoch_length] * len(hypno_pred),
+#     description=descriptions
+# )
+#
+# # Add annotations to raw
+# raw.set_annotations(annotations)
+########## fragment vis ###############################
+# Define the window of interest
+# Fragment window
+# tmin = 0
+# tmax = tmin + 60 # 30-second fragment
+# sfreq = raw.info['sfreq']
+# data, times = raw[:, int(tmin * sfreq):int(tmax * sfreq)]
+#
+# # Shift time to start at 0
+# times = times - tmin
+#
+# # Scale to µV
+# data = data * 1e6
+#
+# plt.figure(figsize=(12, 6))
+#
+# # Vertical spacing between channels
+# offset = 100
+# yticks = []
+# scale = 0.5
+# data_scaled = data * scale  # data is in µV
+# for idx, ch_name in enumerate(raw.info['ch_names']):
+#     ch_offset = idx * offset
+#     plt.plot(
+#         times,
+#         data_scaled[idx] + ch_offset,
+#         linewidth=0.4,
+#         color="black"
+#     )
+#     yticks.append(ch_offset)
+#
+# # Label y-axis with channel names
+# plt.yticks(yticks, raw.info['ch_names'])
+# plt.xlabel("Time (s)")
+# plt.ylabel("Channels")
+# plt.title(f"EEG fragment 0-30 s, U-Sleep = n2 ")
+#
+# # --- Add scale bars (50 µV) ---
+# scalebar_height = 50 * scale  # µV
+# scalebar_x = 1  # 1 s into the fragment
+#
+# for ch_offset in yticks:  # one bar per channel
+#     plt.plot([scalebar_x, scalebar_x],
+#              [ch_offset, ch_offset + scalebar_height],
+#              color="red", linewidth=2)
+#     plt.text(scalebar_x + 0.2,
+#              ch_offset + scalebar_height / 2,
+#              f"{scalebar_height} µV",
+#              va="center", ha="left", color="red")
+#
+# # Top channel
+# scalebar_y_top = yticks[-1]
+# plt.plot([scalebar_x, scalebar_x], [scalebar_y_top, scalebar_y_top + scalebar_height],
+#          color="red", linewidth=2)
+# plt.text(scalebar_x + 0.2, scalebar_y_top + scalebar_height / 2,
+#          f"{scalebar_height} µV", va="center", ha="left", color="red")
+#
+# plt.xlim(0, tmax - tmin)  # set x-axis from 0 to 30
+# plt.tight_layout()
+# plt.savefig("possible_error_frag_100s.svg", dpi=300, format="svg")
 # plt.show(block=True)
+# plt.close()
+
+##########################################################################
+# #
+# fig = raw.plot(start=3570, duration=30,
+#     scalings=dict(eeg=1e-4)             # interactive plotting
+# )
+# fig.subplots_adjust(top=0.9)
+# plt.show(block=True)
+
 
 # raw.export("D:/converted_sleep_data/2/edf/2_night1_02.edf", fmt='edf', physical_range=(-200, 200))
 
@@ -153,10 +193,7 @@ raw.set_channel_types({
 
 # raw = mne.io.read_raw_edf("D:/converted_sleep_data/2/edf/night1_full.edf")
 #
-# raw.set_channel_types({
-#     'Cz':'eeg',
-#     'EOG1':'eog'
-# })
+
 # Sampling frequency
 # print("Sampling frequency:", raw.info["sfreq"], "Hz")
 
@@ -164,7 +201,7 @@ raw.set_channel_types({
 # print("Samples:", raw.n_times)
 
 
-
+# hypno = hypno_pred
 # chan = raw.ch_names
 # sf = raw.info["sfreq"]
 # data = raw.get_data(picks="eeg", units="uV")
@@ -172,13 +209,14 @@ raw.set_channel_types({
 # print(len(hypno))
 # print(np.unique(hypno))
 # print(chan)
-# hypno_up = yasa.hypno_upsample_to_data(hypno, sf_hypno=4/30, data=raw)
-# yasa.plot_spectrogram(data[chan.index("Cz")], sf, hypno_up)
+# hypno_up = yasa.hypno_upsample_to_data(hypno, sf_hypno=1/30, data=raw)
+# yasa.plot_spectrogram(data[chan.index("C3-Cz")], sf, hypno_up)
+# # plt.savefig("YASA_hypno_spectro.svg", format="svg")
 # plt.show(block=True)
 # yasa.plot_hypnogram(hypno)
 # plt.show(block=True)
 
-# yasa.bandpower(raw).to_csv("D:/converted_sleep_data/2/con_full/excel/2_night1_02.csv", index=True)
+yasa.bandpower(raw).to_csv("135_night1.csv", index=True)
 # bandpower = yasa.bandpower(raw, hypno=hypno_up, include=(2, 3, 4))
 # bandpower.to_csv("D:/converted_sleep_data/2/con_full/excel/2_night1_02_stages.csv", index=True)
 #
@@ -188,5 +226,8 @@ raw.set_channel_types({
 # plt.ylabel("Delta power (µV²/Hz)")
 # plt.xlabel("Channels")
 # plt.show()
-
-raw.plot(duration=800, scalings=dict(eeg=1e-4), block=True, )
+# raw.pick_channels(['Cz', 'Oz', 'T5', 'C3', 'C4', 'T6'])
+# raw.plot(duration=300, scalings=dict(eeg=1e-4), block=True)
+# bandpower = yasa.bandpower(raw, hypno=hypno_up, include=(2, 3, 4))
+# fig = yasa.topoplot(bandpower.xs(3)["Theta"])
+# plt.show(block=True)

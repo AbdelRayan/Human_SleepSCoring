@@ -80,6 +80,9 @@ end_idx = np.searchsorted(times, times[-1] - trim_seconds)
 trimmed_stage_vector = stage_vector[start_idx:end_idx]
 trimmed_times = times[start_idx:end_idx]
 
+print(trimmed_stage_vector)
+print(trimmed_times)
+
 plt.figure(figsize=(15, 3))
 plt.plot(trimmed_times, trimmed_stage_vector, drawstyle='steps-post')
 plt.yticks([0, 1, 2, 3, 4], ["Wake", "REM", "N1", "N2", "N3"])

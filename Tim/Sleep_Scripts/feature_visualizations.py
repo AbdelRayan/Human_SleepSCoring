@@ -14,6 +14,7 @@ import pandas as pd
 from specparam import SpectralModel
 import seaborn as sns
 import EntropyHub as EH
+import os
 
 Red = '#d13838'
 Blue = '#127be3'
@@ -439,6 +440,7 @@ def indices_vs_hypnogram(epochs, hypno_epochs, index_w, index_n, index_r, mapped
     # Layout and save
     plt.tight_layout()
     plt.savefig(f'{output_dir}/all_new_indices_vs_wei.svg', format='svg')
+    plt.close()
     # plt.show()
 
 def smooth_and_norm(x):
@@ -1421,6 +1423,184 @@ def plot_averaged_mse_violin(mse_violin, output_dir):
     plt.savefig(f"{output_dir}/mse_violin_avg_sem.svg", format="svg")
     plt.show()
 
+def plot_index_avg_violin_all(results, output_dir):
+    """
+    Create violin plots for each index (W, N, R, 1, 2, 3, 4)
+    x-axis = Sleep states (w, n1, n2, n3, r)
+    datapoints = per-night averages from all subjects/nights
+    Saves each index plot as SVG and data as NPZ.
+    """
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    index_keys = ["W", "N", "R", "1", "2", "3", "4"]
+    state_names = ["w", "n1", "n2", "n3", "r"]
+    state_labels = ["Wake", "N1", "N2", "N3", "REM"]
+
+    colors = {
+        "w":  "royalblue",
+        "n1": "teal",
+        "n2": "purple",
+        "n3": "forestgreen",
+        "r":  "firebrick"
+    }
+    palette = [colors[s] for s in state_names]
+
+    for idx in index_keys:
+
+        # Collect data for each state
+        data_for_violin = {sn: [] for sn in state_names}
+
+        for subj, nights in results.items():
+            for night, idx_dict in nights.items():
+                if idx not in idx_dict:
+                    continue
+                state_vals = idx_dict[idx]
+                for sn in state_names:
+                    val = state_vals.get(sn, np.nan)
+                    if not np.isnan(val):
+                        data_for_violin[sn].append(val)
+
+        # Ordered list for plotting
+        data_list = [data_for_violin[sn] for sn in state_names]
+
+        # --- Violin Plot ---
+        plt.figure(figsize=(8, 6))
+        ax = sns.violinplot(
+            data=data_list,
+            palette=palette,
+            cut=0,
+            bw='scott',
+            inner=None,
+            alpha=0.5,
+            zorder=2
+        )
+
+        # Scatter jitter
+        for i, d in enumerate(data_list):
+            x = np.random.normal(loc=i, scale=0.15, size=len(d))
+            ax.scatter(x, d, color=palette[i], alpha=0.5, marker='D', s=10, zorder=1)
+
+        # Means + SEM
+        for i, d in enumerate(data_list):
+            d = np.array(d)
+            if len(d) == 0:
+                continue
+            mean_val = np.nanmean(d)
+            sem_val = np.nanstd(d) / np.sqrt(len(d))
+
+            plt.plot(i, mean_val, 'o', color='white', markeredgecolor='black',
+                     markersize=6, zorder=4)
+            plt.errorbar(i, mean_val, yerr=sem_val, color='black',
+                         capsize=4, elinewidth=1.5, markeredgewidth=1, zorder=3)
+
+        ax.set_xticks(range(len(state_labels)))
+        ax.set_xticklabels(state_labels)
+        ax.set_xlabel("Sleep State")
+        ax.set_ylabel(f"Average Value of Index {idx}")
+        ax.set_title(f"Index {idx} per Sleep State (Mean ± SEM)")
+        plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
+        plt.tight_layout()
+
+        # Save plot
+        plot_file = os.path.join(output_dir, f"index_{idx}_violin_avg_sem.svg")
+        plt.savefig(plot_file, format="svg")
+        plt.show()
+        print(f"Saved plot: {plot_file}")
+
+        # Save the underlying data
+        data_file = os.path.join(output_dir, f"index_{idx}_data.npz")
+        np.savez(data_file, **data_for_violin)
+        print(f"Saved data: {data_file}")
+
+def plot_signal_violin_all(results, output_dir, signal_keys=["noise", "theta", "delta"]):
+    """
+    Create violin plots for each signal (noise, theta, delta)
+    across all subjects/nights per sleep state.
+    Saves each plot as SVG and underlying data as NPZ.
+    """
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    state_names = ["w", "n1", "n2", "n3", "r"]
+    state_labels = ["Wake", "N1", "N2", "N3", "REM"]
+
+    colors = {
+        "w":  "royalblue",
+        "n1": "teal",
+        "n2": "purple",
+        "n3": "forestgreen",
+        "r":  "firebrick"
+    }
+    palette = [colors[s] for s in state_names]
+
+    for key in signal_keys:
+
+        # Collect per-state values across all subjects/nights
+        data_for_violin = {sn: [] for sn in state_names}
+
+        for subj, nights in results.items():
+            for night, signal_dict in nights.items():
+                if key not in signal_dict:
+                    continue
+                state_vals = signal_dict[key]  # {"w":..., "n1":..., ...}
+                for sn in state_names:
+                    val = state_vals.get(sn, np.nan)
+                    if not np.isnan(val):
+                        data_for_violin[sn].append(val)
+
+        # Ordered list for plotting
+        data_list = [data_for_violin[sn] for sn in state_names]
+
+        # --- Violin plot ---
+        plt.figure(figsize=(8,6))
+        ax = sns.violinplot(
+            data=data_list,
+            palette=palette,
+            cut=0,
+            bw='scott',
+            inner=None,
+            alpha=0.5,
+            zorder=2
+        )
+
+        # Scatter jitter
+        for i, d in enumerate(data_list):
+            x = np.random.normal(loc=i, scale=0.15, size=len(d))
+            ax.scatter(x, d, color=palette[i], alpha=0.5, marker='D', s=10, zorder=1)
+
+        # Means + SEM
+        for i, d in enumerate(data_list):
+            d = np.array(d)
+            if len(d) == 0:
+                continue
+            mean_val = np.nanmean(d)
+            sem_val = np.nanstd(d)/np.sqrt(len(d))
+
+            plt.plot(i, mean_val, 'o', color='white', markeredgecolor='black', markersize=6, zorder=4)
+            plt.errorbar(i, mean_val, yerr=sem_val, color='black', capsize=4,
+                         elinewidth=1.5, markeredgewidth=1, zorder=3)
+
+        # Labels & aesthetics
+        ax.set_xticks(range(len(state_labels)))
+        ax.set_xticklabels(state_labels)
+        ax.set_xlabel("Sleep State")
+        ax.set_ylabel(f"Average {key.capitalize()} Value")
+        ax.set_title(f"{key.capitalize()} per Sleep State (Mean ± SEM)")
+        plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
+        plt.tight_layout()
+
+        # Save
+        plot_file = os.path.join(output_dir, f"{key}_violin_avg_sem.svg")
+        plt.savefig(plot_file, format="svg")
+        plt.show()
+        print(f"Saved plot: {plot_file}")
+
+        # Save underlying data
+        data_file = os.path.join(output_dir, f"{key}_data.npz")
+        np.savez(data_file, **data_for_violin)
+        print(f"Saved data: {data_file}")
+
 def dfa_plot(lfp_PFC, output_dir, length, fs):
     window_size = step_size = fs*length
     num_windows = (len(lfp_PFC) - window_size) // step_size + 1
@@ -1523,85 +1703,177 @@ def dfa_per_state(normalized_dfa, states, output_dir):
 
     return smoothed_dfa
 
-def dfa_violin_and_bar(normalized_dfa, states, output_dir):
-    min_len = min(len(normalized_dfa), len(states))
-    normalized_dfa = normalized_dfa[:min_len]
-    states= states[:min_len]
-    colors = ['royalblue', 'teal', 'purple', 'forestgreen', 'firebrick']
-    df = pd.DataFrame({'state': states, 'dfa': normalized_dfa})
-    summary = df.groupby('state')['dfa'].agg(['mean', 'sem']).reset_index()
-    print(summary)
+
+def aperiodic_violin_and_bar(aperiodic_fit_values, states, output_dir):
+    """
+    Plot per-state aperiodic exponents with bar + SEM and violin + jittered points + SEM.
+
+    Parameters
+    ----------
+    aperiodic_fit_values : np.ndarray
+        Array of per-epoch aperiodic exponents.
+    states : np.ndarray
+        Corresponding sleep stage integers (0=Wake ... 4=REM).
+    output_dir : str
+        Folder to save plots.
+    """
+    # Ensure same length
+    min_len = min(len(aperiodic_fit_values), len(states))
+    aperiodic_fit_values = aperiodic_fit_values[:min_len]
+    states = states[:min_len]
+
+    # DataFrame & summary
+    df = pd.DataFrame({'state': states, 'aperiodic': aperiodic_fit_values})
+    summary = df.groupby('state')['aperiodic'].agg(['mean', 'sem']).reset_index()
+    colors_list = ['royalblue', 'teal', 'purple', 'forestgreen', 'firebrick']
+    labels = ['W', 'N1', 'N2', 'N3', 'REM']
+
+    # --- Bar plot with SEM ---
     plt.figure(figsize=(7, 5))
-    plt.bar(summary['state'], summary['mean'], yerr=summary['sem'],
-            capsize=5, color=[colors[int(s)] for s in summary['state']], edgecolor='black', zorder=2, alpha=0.6)
-    plt.xticks([0, 1, 2, 3, 4], ['W', 'N1', 'N2', 'N3', 'REM'])
-    plt.ylim(-1.1, 1.1)
+    plt.bar(
+        summary['state'], summary['mean'],
+        yerr=summary['sem'],
+        capsize=5,
+        color=[colors_list[int(s)] for s in summary['state']],
+        edgecolor='black', zorder=2, alpha=0.6
+    )
+    plt.xticks(range(5), labels)
     plt.xlabel('Sleep State')
-    plt.ylabel('Normalized mean DFA')
-    plt.title('DFA per Sleep State')
+    plt.ylabel('Aperiodic Exponent')
+    plt.title('Aperiodic Fit per Sleep State (bar + SEM)')
     plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
     plt.tight_layout()
-    plt.savefig(f"{output_dir}/DFA_bar.svg", format='svg')
-    # plt.show()
-    plt.figure(figsize=(7, 5))
-    # Create a boxplot
-    # Build data in exact order 0..4
-    data_for_box = [df.loc[df['state'] == s, 'dfa'].values for s in range(5)]
-    counts = [len(d) for d in data_for_box]
+    plt.savefig(f"{output_dir}/aperiodic_bar.svg", format='svg')
+    plt.close()
 
-    print("Counts per state (0..4):", counts)
-    print("Data types:", df['state'].dtype)
-
-    colors = {0: 'royalblue', 1: 'teal', 2: 'purple', 3: 'forestgreen', 4: 'firebrick'}
-    labels = ['W', 'N1', 'N2', 'N3', 'REM']
+    # --- Violin plot with jitter & SEM ---
+    colors_dict = {0: 'royalblue', 1: 'teal', 2: 'purple', 3: 'forestgreen', 4: 'firebrick'}
     all_states = list(range(5))
-
-    # Build data in exact order 0..4
-    data_for_box = [df.loc[df['state'] == s, 'dfa'].values for s in all_states]
-    counts = [len(d) for d in data_for_box]
-    print("Counts per state (0..4):", counts)
-    print("Unique states present:", sorted(df['state'].unique()))
-
-    # Make a copy of df for plotting convenience
     df_plot = df.copy()
     df_plot['state'] = df_plot['state'].astype(int)
 
     plt.figure(figsize=(8, 6))
+    palette = [colors_dict[s] for s in all_states]
 
-    # seaborn expects the state column to be categorical strings or ints; we keep ints but pass order
-    # Create palette list in the 0..4 order
-    palette = [colors[s] for s in all_states]
+    # Violin
+    ax = sns.violinplot(
+        x='state', y='aperiodic', data=df_plot,
+        order=all_states,
+        palette=palette,
+        cut=0,
+        bw='scott',
+        inner=None,
+        alpha=0.5,
+        zorder=2
+    )
 
-    # Violinplot - drop NaNs automatically
+    # Jittered points
+    for i, s in enumerate(all_states):
+        vals = df_plot.loc[df_plot['state'] == s, 'aperiodic'].values
+        if len(vals) > 0:
+            x = np.random.normal(loc=i, scale=0.15, size=len(vals))
+            ax.scatter(x, vals, color=palette[i], alpha=0.5, marker='D', s=10, zorder=1)
+
+    # Medians + SEM
+    for i, s in enumerate(all_states):
+        vals = df_plot.loc[df_plot['state'] == s, 'aperiodic'].values
+        if len(vals) == 0:
+            continue
+        median_val = np.nanmedian(vals)
+        sem_val = np.nanstd(vals) / np.sqrt(len(vals))
+        plt.plot(i, median_val, 'o', color='white', markeredgecolor='black', markersize=6, zorder=10)
+        plt.errorbar(i, median_val, yerr=sem_val, color='black', capsize=4, elinewidth=1.5, markeredgewidth=1, zorder=9)
+
+    # Cosmetics
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels)
+    ax.set_xlabel('Sleep State')
+    ax.set_ylabel('Aperiodic Exponent')
+    ax.set_title('Aperiodic Fit per Sleep State (violin + SEM)')
+    plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/aperiodic_violin.svg", format='svg')
+    plt.close()
+
+def dfa_violin_and_bar(normalized_dfa, states, output_dir):
+    min_len = min(len(normalized_dfa), len(states))
+    normalized_dfa = normalized_dfa[:min_len]
+    states = states[:min_len]
+
+    # --- DataFrame & summary ---
+    df = pd.DataFrame({'state': states, 'dfa': normalized_dfa})
+    summary = df.groupby('state')['dfa'].agg(['mean', 'sem']).reset_index()
+    colors_list = ['royalblue', 'teal', 'purple', 'forestgreen', 'firebrick']
+    labels = ['W', 'N1', 'N2', 'N3', 'REM']
+
+    # --- Bar plot with SEM ---
+    plt.figure(figsize=(7, 5))
+    plt.bar(
+        summary['state'], summary['mean'],
+        yerr=summary['sem'],
+        capsize=5,
+        color=[colors_list[int(s)] for s in summary['state']],
+        edgecolor='black', zorder=2, alpha=0.6
+    )
+    plt.xticks(range(5), labels)
+    plt.ylim(-1.1, 1.1)
+    plt.xlabel('Sleep State')
+    plt.ylabel('Normalized mean DFA')
+    plt.title('DFA per Sleep State (bar + SEM)')
+    plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/DFA_bar.svg", format='svg')
+    plt.close()
+
+    # --- Violin plot with jitter & SEM ---
+    colors_dict = {0: 'royalblue', 1: 'teal', 2: 'purple', 3: 'forestgreen', 4: 'firebrick'}
+    all_states = list(range(5))
+    df_plot = df.copy()
+    df_plot['state'] = df_plot['state'].astype(int)
+
+    plt.figure(figsize=(8, 6))
+    palette = [colors_dict[s] for s in all_states]
+
+    # Violin plot
     ax = sns.violinplot(
         x='state', y='dfa', data=df_plot,
         order=all_states,
         palette=palette,
-        cut=0,  # don't show tails beyond data
-        bw='scott',  # bandwidth estimator (tune if needed)
-        inner=None  # we'll overlay medians ourselves
+        cut=0,
+        bw='scott',
+        inner=None,
+        alpha=0.5,
+        zorder=2
     )
 
-    # overlay a stripplot (points) for verification (jittered)
-    sns.stripplot(x='state', y='dfa', data=df_plot, order=all_states,
-                  color='k', size=1.5, jitter=0.15, alpha=0.3)
+    # Overlay jittered points
+    for i, s in enumerate(all_states):
+        vals = df_plot.loc[df_plot['state'] == s, 'dfa'].values
+        if len(vals) > 0:
+            x = np.random.normal(loc=i, scale=0.15, size=len(vals))
+            ax.scatter(x, vals, color=palette[i], alpha=0.5, marker='D', s=10, zorder=1)
 
-    # compute medians and plot
-    medians = [np.nanmedian(d) if len(d) > 0 else np.nan for d in data_for_box]
-    for i, m in enumerate(medians):
-        if not np.isnan(m):
-            plt.plot(i, m, marker='o', color='white', markeredgecolor='black', markersize=6, zorder=10)
+    # Overlay medians and SEM
+    for i, s in enumerate(all_states):
+        vals = df_plot.loc[df_plot['state'] == s, 'dfa'].values
+        if len(vals) == 0:
+            continue
+        median_val = np.nanmedian(vals)
+        sem_val = np.nanstd(vals) / np.sqrt(len(vals))
+        plt.plot(i, median_val, 'o', color='white', markeredgecolor='black', markersize=6, zorder=10)
+        plt.errorbar(i, median_val, yerr=sem_val, color='black', capsize=4, elinewidth=1.5, markeredgewidth=1, zorder=9)
 
-    # cosmetic
+    # Cosmetics
+    ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels)
     ax.set_xlabel('Sleep State')
     ax.set_ylabel('Normalized mean DFA')
     ax.set_ylim(-1.1, 1.1)
-    ax.set_title('DFA per Sleep State (violin)')
+    ax.set_title('DFA per Sleep State (violin + SEM)')
     plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
     plt.tight_layout()
-    plt.savefig(f"{output_dir}/dfa_violin.svg", format="svg")
-    # plt.show()
+    plt.savefig(f"{output_dir}/DFA_violin.svg", format='svg')
+    plt.close()
 
 def mse_plot(lfp_PFC, output_dir, length, fs):
     Mobj = EH.MSobject('IncrEn', m=2, R=3, Norm=True)
@@ -1764,73 +2036,82 @@ def mse_per_state(normalized_mse, states, output_dir):
 def mse_violin_and_bar(normalized_mse, states, output_dir):
     min_len = min(len(normalized_mse), len(states))
     normalized_mse = normalized_mse[:min_len]
-    states= states[:min_len]
+    states = states[:min_len]
+
     df = pd.DataFrame({'state': states, 'mse': normalized_mse})
     summary = df.groupby('state')['mse'].agg(['mean', 'sem']).reset_index()
     colors = ['royalblue', 'teal', 'purple', 'forestgreen', 'firebrick']
     labels = ['W', 'N1', 'N2', 'N3', 'REM']
-    print(summary)
+
+    # --- Bar plot with SEM ---
     plt.figure(figsize=(7, 5))
-    plt.bar(summary['state'], summary['mean'], yerr=summary['sem'],
-            capsize=5, color=[colors[int(s)] for s in summary['state']], edgecolor='black', zorder=2, alpha=0.6)
-    plt.xticks([0, 1, 2, 3, 4], ['W', 'N1', 'N2', 'N3', 'REM'])
+    plt.bar(
+        summary['state'], summary['mean'],
+        yerr=summary['sem'],
+        capsize=5,
+        color=[colors[int(s)] for s in summary['state']],
+        edgecolor='black', zorder=2, alpha=0.6
+    )
+    plt.xticks([0, 1, 2, 3, 4], labels)
     plt.ylim(-1.1, 1.1)
     plt.xlabel('Sleep State')
     plt.ylabel('Normalized mean MSE')
-    plt.title('MSE per Sleep State')
+    plt.title('MSE per Sleep State (bar + SEM)')
     plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
     plt.tight_layout()
     plt.savefig(f"{output_dir}/MSE_bar.svg", format='svg')
-    # plt.show()
-    plt.figure(figsize=(7, 5))
+    plt.close()
 
-    # --- Inputs ---
-    colors = {0: 'royalblue', 1: 'teal', 2: 'purple', 3: 'forestgreen', 4: 'firebrick'}
-    labels = ['W', 'N1', 'N2', 'N3', 'REM']
+    # --- Violin plot with SEM ---
+    colors_dict = {0: 'royalblue', 1: 'teal', 2: 'purple', 3: 'forestgreen', 4: 'firebrick'}
     all_states = list(range(5))
-
-    # Build data for each state
-    data_for_plot = [df.loc[df['state'] == s, 'mse'].values for s in all_states]
-    medians = [np.nanmedian(d) if len(d) > 0 else np.nan for d in data_for_plot]
-    print("Counts per state (0..4):", [len(d) for d in data_for_plot])
-    print("Unique states present:", sorted(df['state'].unique()))
-
-    # Prepare df copy for plotting
     df_plot = df.copy()
     df_plot['state'] = df_plot['state'].astype(int)
 
-    # --- Seaborn violinplot ---
     plt.figure(figsize=(8, 6))
-    palette = [colors[s] for s in all_states]
+    palette = [colors_dict[s] for s in all_states]
 
     ax = sns.violinplot(
         x='state', y='mse', data=df_plot,
         order=all_states,
         palette=palette,
-        cut=0,  # no tails beyond data
-        bw='scott',  # bandwidth estimator
-        inner=None  # overlay medians manually
-    )
+        cut=0,
+        bw='scott',
+        inner=None,
+        alpha = 0.5,
+        zorder = 2
+        )
 
-    # Overlay jittered points
-    sns.stripplot(x='state', y='mse', data=df_plot, order=all_states,
-                  color='k', size=1.5, jitter=0.15, alpha=0.3)
+    # --- Overlay jittered points (fixed) ---
+    for i, s in enumerate(all_states):
+        vals = df_plot.loc[df_plot['state'] == s, 'mse'].values
+        if len(vals) > 0:
+            x = np.random.normal(loc=i, scale=0.15, size=len(vals))
+            ax.scatter(x, vals, color=palette[i], alpha=0.5, marker='D', s=10, zorder=1)
 
-    # Overlay medians
-    for i, m in enumerate(medians):
-        if not np.isnan(m):
-            plt.plot(i, m, marker='o', color='white', markeredgecolor='black', markersize=6, zorder=10)
+    # Overlay medians and SEM
+    for i, s in enumerate(all_states):
+        vals = df_plot.loc[df_plot['state'] == s, 'mse'].values
+        if len(vals) == 0:
+            continue
+        median_val = np.nanmedian(vals)
+        sem_val = np.nanstd(vals) / np.sqrt(len(vals))
+        # median point
+        plt.plot(i, median_val, 'o', color='white', markeredgecolor='black', markersize=6, zorder=10)
+        # SEM vertical line
+        plt.errorbar(i, median_val, yerr=sem_val, color='black', capsize=4, elinewidth=1.5, markeredgewidth=1, zorder=9)
 
     # Cosmetics
+    ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels)
     ax.set_xlabel('Sleep State')
     ax.set_ylabel('Normalized mean MSE')
     ax.set_ylim(-1.1, 1.1)
-    ax.set_title('MSE per Sleep State (violin)')
+    ax.set_title('MSE per Sleep State (violin + SEM)')
     plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
     plt.tight_layout()
     plt.savefig(f"{output_dir}/MSE_violin.svg", format='svg')
-    # plt.show()
+    plt.close()
 
 
 def Index_1(delta, gamma, EMG):
