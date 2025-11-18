@@ -59,35 +59,35 @@ def training_dataset(file_path, n_states, n_repeat_states, subjects):
             indices_n3_total = np.concatenate((indices_TS_total, indices_n3), axis=0)
             indices_rem_total = np.concatenate((indices_rem_total, indices_rem), axis=0)
 
-    selected_indices_artefact = random.sample(list(indices_artefact_total), n_artefact)
     selected_indices_wake = random.sample(list(indices_wake_total), n_wake)
-    selected_indices_nrem = random.sample(list(indices_nrem_total), n_nrem)
-    selected_indices_TS = random.sample(list(indices_TS_total), n_TS)
+    selected_indices_n1 = random.sample(list(indices_n1_total), n_n1)
+    selected_indices_n2 = random.sample(list(indices_n2_total), n_n2)
+    selected_indices_n3 = random.sample(list(indices_n3_total), n_n3)
     selected_indices_rem = random.sample(list(indices_rem_total), n_rem)
-    selected_indices_artefact = np.ravel([[el] * n_repeat_artefact for el in selected_indices_artefact])
     selected_indices_wake = np.ravel([[el] * n_repeat_wake for el in selected_indices_wake])
-    selected_indices_nrem = np.ravel([[el] * n_repeat_nrem for el in selected_indices_nrem])
-    selected_indices_TS = np.ravel([[el] * n_repeat_TS for el in selected_indices_TS])
+    selected_indices_n1 = np.ravel([[el] * n_repeat_n1 for el in selected_indices_n1])
+    selected_indices_n2 = np.ravel([[el] * n_repeat_n2 for el in selected_indices_n2])
+    selected_indices_n3 = np.ravel([[el] * n_repeat_n3 for el in selected_indices_n3])
     selected_indices_rem = np.ravel([[el] * n_repeat_rem for el in selected_indices_rem])
-
-    features_artefact = array_features_total[selected_indices_artefact.astype(int)]
-    scores = array_scores_total[selected_indices_artefact.astype(int)]
-    training_dataset = np.concatenate((training_dataset, features_artefact), axis=0)
-    manual_scoring = np.concatenate((manual_scoring, scores), axis=0)
 
     features_wake = array_features_total[selected_indices_wake.astype(int)]
     scores = array_scores_total[selected_indices_wake.astype(int)]
-    training_dataset = np.concatenate((training_dataset, features_wake), axis=0)  # Filling up training dataset
-    manual_scoring = np.concatenate((manual_scoring, scores), axis=0)  # Filling up corresponding manual scores
-
-    features_nrem = array_features_total[selected_indices_nrem.astype(int)]
-    scores = array_scores_total[selected_indices_nrem.astype(int)]
-    training_dataset = np.concatenate((training_dataset, features_nrem), axis=0)
+    training_dataset = np.concatenate((training_dataset, features_wake), axis=0)
     manual_scoring = np.concatenate((manual_scoring, scores), axis=0)
 
-    features_TS = array_features_total[selected_indices_TS.astype(int)]
-    scores = array_scores_total[selected_indices_TS.astype(int)]
-    training_dataset = np.concatenate((training_dataset, features_TS), axis=0)
+    features_n1 = array_features_total[selected_indices_n1.astype(int)]
+    scores = array_scores_total[selected_indices_n1.astype(int)]
+    training_dataset = np.concatenate((training_dataset, features_n1), axis=0)  # Filling up training dataset
+    manual_scoring = np.concatenate((manual_scoring, scores), axis=0)  # Filling up corresponding manual scores
+
+    features_n2 = array_features_total[selected_indices_n2.astype(int)]
+    scores = array_scores_total[selected_indices_n2.astype(int)]
+    training_dataset = np.concatenate((training_dataset, features_n2), axis=0)
+    manual_scoring = np.concatenate((manual_scoring, scores), axis=0)
+
+    features_n3 = array_features_total[selected_indices_n3.astype(int)]
+    scores = array_scores_total[selected_indices_n3.astype(int)]
+    training_dataset = np.concatenate((training_dataset, features_n3), axis=0)
     manual_scoring = np.concatenate((manual_scoring, scores), axis=0)
 
     features_rem = array_features_total[selected_indices_rem.astype(int)]
