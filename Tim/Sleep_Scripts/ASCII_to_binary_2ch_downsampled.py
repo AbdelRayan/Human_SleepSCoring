@@ -1,3 +1,40 @@
+"""
+By: Tim Veldema
+Date: 19/11/2025
+
+Utilities for converting BrainVision ASCII EEG recordings to
+MNE-compatible binary format.
+
+This module provides two high-level conversion workflows:
+
+1. convert_brainvision_ascii
+   Converts vectorized ASCII .dat files to multiplexed binary format and
+   patches the associated .vhdr/.vmrk files. EEG channels can be optionally
+   re-referenced to Cz (bipolarization for extra-cranial channels), while
+   EOG and EMG channels are preserved or bipolarized as appropriate.
+   Downsampling by 4 is performed in the same way as the native BrainVision
+   ASCII export.
+
+2. convert_brainvision_ascii_average
+   Groups all contacts belonging to the same electrode (e.g. F3a, F3b, F3c)
+   and produces a single averaged signal per electrode. This is useful when
+   only electrode-level activity is needed rather than individual contact
+   signals. EOG channels remain unipolar and EMG is output as EMG1–EMG2.
+
+Both functions generate:
+    - A binary multiplexed .dat file (IEEE_FLOAT_32)
+    - A patched .vhdr header describing the new channel layout
+    - A copied or minimal .vmrk marker file
+
+The outputs are fully compatible with MNE-Python and standard BrainVision
+readers.
+
+Typical use cases:
+    • Simplifying high-contact EEG montages
+    • Creating Cz-referenced bipolar montages
+    • Averaging depth/strip electrode contacts
+    • Cleaning ASCII exports produced from clinical EEG systems
+"""
 import re
 import numpy as np
 import os
