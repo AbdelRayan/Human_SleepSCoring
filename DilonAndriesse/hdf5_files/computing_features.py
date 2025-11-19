@@ -131,6 +131,10 @@ def aperiodic_fit(window_data, fs):
 
     fm = SpectralModel(min_peak_height=0.05, aperiodic_mode='fixed', verbose=False)
     fm.fit(freqs, psd)
+
+    if not fm.has_model:
+        return np.nan 
+
     aperiodic = fm.get_params('aperiodic')[1]
 
     return aperiodic

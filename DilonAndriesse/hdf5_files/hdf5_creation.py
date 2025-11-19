@@ -1,25 +1,9 @@
-"""
-@:description
-Original script from the employed rodent model. 
-Adjusted to make it work using human data.
-
-@:refer
-not sure
-
-@:original_code
-#post git link here?
-"""
-
 import numpy as np
 import h5py
 from scipy.stats import mode
 from scipy.io import loadmat
 import os
 import sys
-
-#temp
-import multiprocessing as mp
-from joblib import Parallel, delayed
 
 # get parent directory path to be able to import from parallel directory
 module_path = os.path.abspath(os.path.join('..'))
@@ -29,7 +13,8 @@ if module_path not in sys.path:
 from hdf5_files.computing_features import psd_multitaper, wei_normalizing, index_W, index_N, index_R, Index_1, Index_2, Index_3, Index_4, calc_aperiodic_fit, calc_dfa, calc_mse
 from hdf5_files.Artefacts_Detection import removeArtefacts, artefact_epochs
 
-def getNewFeatures(raw_noise, raw_delta, raw_theta, raw_sigma, raw_beta, raw_gamma, raw_emg, states, fs, epoch_length):
+
+def getNewFeatures(raw_noise, raw_delta, raw_theta, raw_sigma, raw_gamma, raw_emg, states, fs, epoch_length):
   """
   Computes new features from raw data.
 
@@ -61,13 +46,10 @@ def getNewFeatures(raw_noise, raw_delta, raw_theta, raw_sigma, raw_beta, raw_gam
 
   #Frequency ranges
   noise_band = [0,0.5]
-  delta_band = [0.5,5]
-  theta_band = [6,10]
-  sigma_band = [11,17]
-  beta_band = [22,30]
-  gamma_band = [35,45]
-  total_band = [0,30]
-
+  delta_band = [0.5,3.99]
+  theta_band = [4,7.99]
+  sigma_band = [11,15]
+  gamma_band = [30,40]
   # proper data window length based on epoch and sampling frequency
   window_length = fs*epoch_length
 
@@ -131,19 +113,20 @@ def getNewFeatures(raw_noise, raw_delta, raw_theta, raw_sigma, raw_beta, raw_gam
   window_size = epoch_length * fs
   aperiodic = calc_aperiodic_fit(raw_delta, window_size, epoch_length, fs)
   aperiodic = np.array(aperiodic)
-  aperiodic_norm = wei_normalizing(aperiodic)
+  #aperiodic_norm = wei_normalizing(aperiodic)
   dfa = calc_dfa(raw_delta, window_size, window_size, fs)
   dfa = np.array(dfa)
-  dfa_norm = wei_normalizing(dfa)
+  #dfa_norm = wei_normalizing(dfa)
   mse = calc_mse(raw_delta, window_size, window_size, fs)
   mse = np.array(mse)
-  mse_norm = wei_normalizing(mse)
+  #mse_norm = wei_normalizing(mse)
   # Create matrix
   # new_features = np.column_stack((index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed))
   new_features = np.column_stack((index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed, aperiodic, dfa, mse))
   
   
   return new_features, mapped_scores
+
 
 def prepare_for_hdf5(subject_name, recording, fs, files_path, epoch_length, path_to_hdf5):
   """
@@ -170,8 +153,6 @@ def prepare_for_hdf5(subject_name, recording, fs, files_path, epoch_length, path
       theta = i
     if 'Sigma' in i:
       sigma = i
-    if 'Beta' in i:
-      beta = i
     if 'Gamma' in i:
       gamma = i
 
@@ -208,12 +189,6 @@ def prepare_for_hdf5(subject_name, recording, fs, files_path, epoch_length, path
   sigma_filt = np.ravel(sig_sigma[0])
   sigma_artefact_indexes = np.ravel(sig_sigma[1])
 
-  beta_data = loadmat(os.path.join(files_path, beta))
-  beta_data = next(v for k, v in beta_data.items() if 'Beta' in k)
-  sig_beta = removeArtefacts(beta_data, fs, [9,8], [0.2,0.1])
-  beta_filt = np.ravel(sig_beta[0])
-  beta_artefact_indexes = np.ravel(sig_beta[1])
-
   gamma_data = loadmat(os.path.join(files_path, gamma))
   gamma_data = next(v for k, v in gamma_data.items() if 'Gamma' in k)
   sig_gamma = removeArtefacts(gamma_data, fs, [9,8], [0.2,0.1])
@@ -233,9 +208,10 @@ def prepare_for_hdf5(subject_name, recording, fs, files_path, epoch_length, path
   states = sleep_scoring['states']
   states = states[0]
 
+  print(len(delta_filt))
 
   # Create matrix for specific set of recordings
-  a = getNewFeatures(noise_filt, delta_filt, theta_filt, sigma_filt, beta_filt, gamma_filt, emg_filt, states, fs, epoch_length)
+  a = getNewFeatures(noise_filt, delta_filt, theta_filt, sigma_filt, gamma_filt, emg_filt, states, fs, epoch_length)
   Features = a[0]
   Mapped_scores = a[1]
   print(f"Size of epoched features: {len(Features)}")
@@ -249,10 +225,9 @@ def prepare_for_hdf5(subject_name, recording, fs, files_path, epoch_length, path
   delta_arte_epochs = artefact_epochs(delta_artefact_indexes, window_length)
   theta_arte_epochs = artefact_epochs(theta_artefact_indexes, window_length)
   sigma_arte_epochs = artefact_epochs(sigma_artefact_indexes, window_length)
-  beta_arte_epochs = artefact_epochs(beta_artefact_indexes, window_length)
   gamma_arte_epochs = artefact_epochs(gamma_artefact_indexes, window_length)
   emg_arte_epochs = artefact_epochs(emg_artefact_indexes, window_length)
-  artefact_indices = np.unique(np.concatenate((noise_arte_epochs, delta_arte_epochs, theta_arte_epochs, sigma_arte_epochs, beta_arte_epochs, gamma_arte_epochs, emg_arte_epochs)))
+  artefact_indices = np.unique(np.concatenate((noise_arte_epochs, delta_arte_epochs, theta_arte_epochs, sigma_arte_epochs, gamma_arte_epochs, emg_arte_epochs)))
   artefact_indices = artefact_indices.astype(int)
   #print(f"Total amount of artefacts indices: {len(artefact_indices)}")
   Mapped_scores[artefact_indices] = 5 
@@ -286,31 +261,3 @@ def update_hdf5(result, path_to_hdf5):
     group.attrs['Description Mapped_scores'] = '[0: Wake, 1: N1, 2: N2, 3: N3, 4: REM, 5: Movement]'
     group.create_dataset('Features', data = result[0])
     group.create_dataset('Mapped_scores', data = result[1])
-    
-# if __name__ == "__main__":
-#   fs = 100 # EEG sampling frequency
-#   epoch_length = 5 #in seconds
-
-#   path_to_pt5 = 'C:/Users/andri/school/bio-informatics/internship/donders/data/human_test_data/mat_files/'   # Input folder path
-#   hdf5_path = 'C:/Users/andri/school/bio-informatics/internship/donders/data/human_test_data/hdf5/physionet_test5.h5'   #Name of the new hdf5 file to create
-
-#   Database = h5py.File(hdf5_path, 'w')  # Output directory path
-
-#   files = np.ravel(os.listdir(path_to_pt5))
-#   # Create recording quintiplets (Pfz-Cz, Pz-Cz, EMG, EOG states)
-#   files = files[:len(files) // 5 * 5].reshape(-1, 5)
-#   num_processes = mp.cpu_count()
-#   print('Number of processes :', num_processes)
-#   # files = [
-#   #   'SC4042E0_EMG.mat', 
-#   #   'SC4042E0_EOG.mat', 
-#   #   'SC4042E0_Fpz-Cz.mat',
-#   #   'SC4042E0_Pz-Oz.mat',
-#   #   'SC4042E0_sleep_states.mat'
-#   # ]
-
-#   results = Parallel(n_jobs=min(num_processes, len(files)), verbose = 0)(delayed(prepare_for_hdf5)(recording, fs, path_to_pt5, epoch_length) for recording in files)
-#   #results = prepare_for_hdf5(files[0], fs, path_to_pt5, epoch_length)
-
-#   for result in results:
-#     update_hdf5(result, hdf5_path)
