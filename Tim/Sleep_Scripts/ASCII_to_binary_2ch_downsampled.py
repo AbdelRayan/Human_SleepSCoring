@@ -1,124 +1,157 @@
 import re
-
 import numpy as np
 import os
 import shutil
 import mne
 
-def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=None):
-    """
-    Convert BrainVision ASCII .dat (vectorized, channels in rows)
-    to binary multiplexed format and patch .vhdr accordingly.
 
-    Differences vs. original:
-    - Channels are replaced with bipolar derivations:
-        * EEG vs Cz (for all in channel_select)
-        * EOG1-EOG2
-        * EMG1-EMG2
+def convert_brainvision_ascii(
+    vhdr_file,
+    out_dir="converted",
+    channel_select=None,
+    downsample_factor=4,
+):
+    """
+    Convert a BrainVision ASCII .dat file (vectorized, channels in rows) into a
+    binary multiplexed .dat file and generate a patched .vhdr compatible with MNE.
+
+    Behavior
+    --------
+    - If ``channel_select`` is None:
+        → ALL channels in the ASCII file are included.
+    - If ``channel_select`` is a list:
+        → ONLY those channels are included.
+
+    Extra-cranial channels are defined as:
+        F1–F5, Fz
+        C1–C5, Cz
+        T1–T5
+        O1–O5, Oz
+
+    Extra-cranial channels are bipolarized vs Cz if Cz exists.
+    Non-extra-cranial channels are always unipolar.
+    Cz itself is always unipolar.
+
+    EOG1/EOG2 (unipolar) and EMG1–EMG2 (bipolar) are ALWAYS included.
 
     Parameters
     ----------
     vhdr_file : str
-        Path to the original .vhdr file.
+        Path to the original BrainVision .vhdr file.
     out_dir : str
-        Directory where converted files will be stored.
+        Output directory for converted files.
     channel_select : list[str] or None
-        EEG channels to re-reference against Cz.
-        EOG1/2 and EMG1/2 are always included automatically.
+        Channels to include. If None, all channels from the file are included.
+    downsample_factor : int or None
+        If >1, downsample by averaging over non-overlapping blocks.
+        Use None or 1 for no downsampling.
 
     Returns
     -------
     new_vhdr : str
-        Path to the new patched .vhdr file (ready for MNE).
+        Path to the patched .vhdr file.
     """
+    # Extra-cranial EEG channel regex
+    extracranial_re = re.compile(
+        r"^(F[1-5]|Fz|C[1-5]|Cz|T[1-5]|O[1-5]|Oz)$",
+        flags=re.IGNORECASE
+    )
+
+    def is_extracranial(ch):
+        return extracranial_re.match(ch) is not None
+
     base_dir = os.path.dirname(vhdr_file)
     base_name = os.path.splitext(os.path.basename(vhdr_file))[0]
     out_prefix = base_name
 
-    # Ensure output directory exists
     os.makedirs(out_dir, exist_ok=True)
 
-    # Parse .vhdr to find data and marker files
-    dat_file, vmrk_file = None, None
+    # ----------------------- PARSE .vhdr -----------------------
+    dat_file = vmrk_file = None
     with open(vhdr_file, "r", encoding="utf-8", errors="ignore") as f:
         for line in f:
             if line.startswith("DataFile="):
                 dat_file = line.split("=", 1)[1].strip()
-            if line.startswith("MarkerFile="):
+            elif line.startswith("MarkerFile="):
                 vmrk_file = line.split("=", 1)[1].strip()
 
     if dat_file is None:
-        raise ValueError("Could not find DataFile= in .vhdr")
+        raise ValueError("Missing DataFile= in header")
 
     dat_file = os.path.join(base_dir, dat_file)
-    if vmrk_file is not None:
+    if vmrk_file:
         vmrk_file = os.path.join(base_dir, vmrk_file)
 
-    # Output paths
     new_dat = os.path.join(out_dir, f"{out_prefix}.dat")
     new_vhdr = os.path.join(out_dir, f"{out_prefix}.vhdr")
     new_vmrk = os.path.join(out_dir, f"{out_prefix}.vmrk")
 
-    # ---- Step 1: Load ASCII .dat ----
+    # ----------------------- LOAD ASCII .dat -----------------------
     all_channels = {}
+
     with open(dat_file, "r") as f:
         for line in f:
-            parts = line.strip().split()
+            parts = line.split()
             if not parts:
                 continue
-            ch_name = parts[0]
-            values = np.array(parts[1:], dtype=np.float32)
-            n = len(values) - (len(values) % 4)
-            values = values[:n].reshape(-1, 4).mean(axis=1).astype(np.float32)
-            all_channels[ch_name] = values
+
+            ch = parts[0]
+            vals = np.asarray(parts[1:], dtype=np.float32)
+
+            if downsample_factor and downsample_factor > 1:
+                L = len(vals)
+                Lcrop = L - (L % downsample_factor)
+                vals = vals[:Lcrop].reshape(-1, downsample_factor).mean(axis=1)
+
+            all_channels[ch] = vals.astype(np.float32)
 
     n_samples = len(next(iter(all_channels.values())))
+    cz_available = "Cz" in all_channels
 
-    # ---- Step 2: Build bipolar derivations ----
+    # Determine which channels to process
+    if channel_select is None:
+        channels_to_use = list(all_channels.keys())
+    else:
+        channels_to_use = [ch for ch in channel_select if ch in all_channels]
+
+    # ----------------------- BUILD OUTPUT DATA -----------------------
     bipolar_data = []
     bipolar_names = []
 
-    # EEG channels vs Cz
-    if channel_select is not None and "Cz" in all_channels:
-        for ch in channel_select :
-            if ch in all_channels and ch in ['T5', 'T6']:
-                new_name = f"{ch}-Cz"
-                bipolar_data.append(all_channels[ch] - all_channels["Cz"])
-                bipolar_names.append(new_name)
-            else:
-                bipolar_data.append(all_channels[ch])
-                bipolar_names.append(ch)
-    else:
-        for channel in all_channels:
-            if channel not in ["Cb1", "Cb2", "EKG1", "EKG2", "EOG1", "EOG2", "EMG1", "EMG2"]:
-                bipolar_data.append(all_channels[channel])
-                bipolar_names.append(channel)
+    for ch in channels_to_use:
+        data = all_channels[ch]
 
-    # EOG
-    if "EOG1" in all_channels and "EOG2" in all_channels:
-        bipolar_data.append(all_channels["EOG1"])
-        bipolar_data.append(all_channels["EOG2"])
-        bipolar_names.append("EOG1")
-        bipolar_names.append("EOG2")
+        if is_extracranial(ch) and ch != "Cz" and cz_available:
+            # bipolar
+            bipolar_data.append(data - all_channels["Cz"])
+            bipolar_names.append(f"{ch}-Cz")
+        else:
+            # unipolar
+            bipolar_data.append(data)
+            bipolar_names.append(ch)
 
+    # Add EOG always
+    for eog in ["EOG1", "EOG2"]:
+        if eog in all_channels:
+            bipolar_data.append(all_channels[eog])
+            bipolar_names.append(eog)
+
+    # Add EMG bipolar always
     if "EMG1" in all_channels and "EMG2" in all_channels:
         bipolar_data.append(all_channels["EMG1"] - all_channels["EMG2"])
         bipolar_names.append("EMG1-EMG2")
 
     bipolar_data = np.vstack(bipolar_data)
 
-    # ---- Step 3: Write binary multiplexed file ----
+    # ----------------------- WRITE BINARY .dat -----------------------
     multiplexed = bipolar_data.T.astype(np.float32).ravel(order="C")
     with open(new_dat, "wb") as f:
         f.write(multiplexed.tobytes())
 
-    print(f"Converted {len(bipolar_names)} bipolar channels × {n_samples} samples")
-    print(f"Saved new binary .dat → {new_dat}")
-
-    # ---- Step 4: Write patched .vhdr ----
+    # ----------------------- WRITE .vhdr -----------------------
     with open(new_vhdr, "w", encoding="utf-8") as f_out:
         f_out.write("Brain Vision Data Exchange Header File Version 2.0\n")
-        f_out.write("; Converted with bipolar derivations\n\n")
+        f_out.write("; Converted with selective Cz-referencing\n\n")
         f_out.write("[Common Infos]\n")
         f_out.write("Codepage=UTF-8\n")
         f_out.write(f"DataFile={os.path.basename(new_dat)}\n")
@@ -128,7 +161,7 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=Non
         f_out.write("DataType=TIMEDOMAIN\n")
         f_out.write(f"NumberOfChannels={len(bipolar_names)}\n")
         f_out.write(f"DataPoints={n_samples}\n")
-        f_out.write("SamplingInterval=4000\n")  # 1000 Hz → 250 Hz
+        f_out.write("SamplingInterval=4000\n")
 
         f_out.write("\n[Binary Infos]\n")
         f_out.write("BinaryFormat=IEEE_FLOAT_32\n")
@@ -137,72 +170,53 @@ def convert_brainvision_ascii(vhdr_file, out_dir="converted", channel_select=Non
         for i, ch in enumerate(bipolar_names, start=1):
             f_out.write(f"Ch{i}={ch},,,µV\n")
 
-    print(f"Patched .vhdr → {new_vhdr}")
-
-    # ---- Step 5: Copy/patch .vmrk ----
+    # ----------------------- WRITE .vmrk -----------------------
     if vmrk_file and os.path.exists(vmrk_file):
         shutil.copy(vmrk_file, new_vmrk)
-        print(f"Copied .vmrk → {new_vmrk}")
     else:
         with open(new_vmrk, "w", encoding="utf-8") as f:
             f.write("Brain Vision Data Exchange Marker File, Version 1.0\n")
-            f.write("; Created by converter\n")
             f.write("[Common Infos]\n")
             f.write("Codepage=UTF-8\n")
             f.write("[Marker Infos]\n")
-            f.write("; no markers\n")
             f.write("[Marker Data]\n")
-        print(f"Created empty .vmrk → {new_vmrk}")
 
     return new_vhdr
 
 def convert_brainvision_ascii_average(vhdr_file, out_dir="converted"):
     """
-    Convert BrainVision ASCII .dat (vectorized, channels in rows)
-    to binary multiplexed format and patch .vhdr accordingly.
+    Does the same as convert_brainvision_ascii, but instead of treating each
+    contact as a separate channel, this function:
 
-    Differences vs. original:
-    - Channels are replaced with bipolar derivations:
-        * EEG vs Cz (for all in channel_select)
-        * EOG1-EOG2
-        * EMG1-EMG2
+    1. Selects all channels belonging to the same electrode
+       ("full electrodes" → e.g. F3, F3a, F3b, etc.)
+    2. Averages across all contacts belonging to that electrode.
 
-    Parameters
-    ----------
-    vhdr_file : str
-        Path to the original .vhdr file.
-    out_dir : str
-        Directory where converted files will be stored.
-    channel_select : list[str] or None
-        EEG channels to re-reference against Cz.
-        EOG1/2 and EMG1/2 are always included automatically.
-
-    Returns
-    -------
-    new_vhdr : str
-        Path to the new patched .vhdr file (ready for MNE).
+    Outputs:
+        - One averaged channel per electrode
+        - EOG1, EOG2 kept unipolar
+        - EMG1–EMG2 as bipolar
     """
     base_dir = os.path.dirname(vhdr_file)
     base_name = os.path.splitext(os.path.basename(vhdr_file))[0]
     out_prefix = base_name
-
-    # Ensure output directory exists
     os.makedirs(out_dir, exist_ok=True)
 
-    # Parse .vhdr to find data and marker files
+    # ------------------------- Parse .vhdr -------------------------
     dat_file, vmrk_file = None, None
     with open(vhdr_file, "r", encoding="utf-8", errors="ignore") as f:
         for line in f:
+            line = line.strip()
             if line.startswith("DataFile="):
                 dat_file = line.split("=", 1)[1].strip()
-            if line.startswith("MarkerFile="):
+            elif line.startswith("MarkerFile="):
                 vmrk_file = line.split("=", 1)[1].strip()
 
     if dat_file is None:
         raise ValueError("Could not find DataFile= in .vhdr")
 
     dat_file = os.path.join(base_dir, dat_file)
-    if vmrk_file is not None:
+    if vmrk_file:
         vmrk_file = os.path.join(base_dir, vmrk_file)
 
     # Output paths
@@ -210,73 +224,96 @@ def convert_brainvision_ascii_average(vhdr_file, out_dir="converted"):
     new_vhdr = os.path.join(out_dir, f"{out_prefix}.vhdr")
     new_vmrk = os.path.join(out_dir, f"{out_prefix}.vmrk")
 
-    # ---- Step 1: Load ASCII .dat ----
-    all_channels = {}
+    # ------------------------- Load ASCII data -------------------------
+    electrode_groups = {}   # electrode_name → list of contact arrays
+    eog_channels = {}
+    emg_channels = {}
+
+    contact_pattern = re.compile(r"^([A-Za-z]+)(\d*)$", flags=re.IGNORECASE)
+
     with open(dat_file, "r") as f:
         for line in f:
             parts = line.strip().split()
             if not parts:
                 continue
+
             ch_name = parts[0]
-            match = re.match(r"([A-Za-z]+)(\d+)", ch_name)
-            if match:
-                letters, numbers = match.groups()
-            else:
-                print(f"Skipping channel {ch_name} (does not match letter+digit pattern)")
-                continue
             values = np.array(parts[1:], dtype=np.float32)
+
+            # Downsample by 4 (exactly as original function)
             n = len(values) - (len(values) % 4)
             values = values[:n].reshape(-1, 4).mean(axis=1).astype(np.float32)
-            if 'EOG' in ch_name or 'EMG' in ch_name:
-                all_channels[ch_name] = values
-            else:
-                print(f"Adding {letters}")
-                if letters in all_channels:
-                    all_channels[letters] = np.vstack([all_channels[letters], values])
-                else:
-                    all_channels[letters] = values
 
-    for channel, arr in all_channels.items():
-        print(f"Averaging {channel}")
-        if arr.ndim > 1:
-            all_channels[channel] = np.mean(arr, axis=0)
-        else:
-            all_channels[channel] = arr
+            # ---------- Special channels ----------
+            if ch_name.startswith("EOG"):
+                eog_channels[ch_name] = values
+                continue
 
+            if ch_name.startswith("EMG"):
+                emg_channels[ch_name] = values
+                continue
 
-    n_samples = len(next(iter(all_channels.values())))
+            # ---------- EEG electrodes ----------
+            m = contact_pattern.match(ch_name)
+            if not m:
+                print(f"Skipping channel {ch_name} (not letter+digits)")
+                continue
 
-    bipolar_data = []
-    bipolar_names = []
+            electrode = m.group(1)   # e.g. F3a → "F"
+            # Better grouping: electrode should be full letter+number prefix
+            # Example: F3a → group as "F3"
+            prefix = re.match(r"[A-Za-z]+\d+", ch_name)
+            if prefix:
+                electrode = prefix.group(0)
 
-    for ch in all_channels.keys():
-        if 'EOG' not in ch or 'EMG' not in ch:
-            bipolar_data.append(all_channels[ch])
-            bipolar_names.append(ch)
+            if electrode not in electrode_groups:
+                electrode_groups[electrode] = []
 
-    # EOG
-    if "EOG1" in all_channels and "EOG2" in all_channels:
-        bipolar_data.append(all_channels["EOG1"] - all_channels["EOG2"])
-        bipolar_names.append("EOG1-EOG2")
+            electrode_groups[electrode].append(values)
 
-    if "EMG1" in all_channels and "EMG2" in all_channels:
-        bipolar_data.append(all_channels["EMG1"] - all_channels["EMG2"])
-        bipolar_names.append("EMG1-EMG2")
+    # ------------------------- Average contacts per electrode -------------------------
+    averaged = {}
+    for elec, arrs in electrode_groups.items():
+        print(f"Averaging electrode {elec} from {len(arrs)} contacts")
+        arrs = np.vstack(arrs)
+        averaged[elec] = np.mean(arrs, axis=0)
 
-    bipolar_data = np.vstack(bipolar_data)
+    n_samples = len(next(iter(averaged.values())))
 
-    # ---- Step 3: Write binary multiplexed file ----
-    multiplexed = bipolar_data.T.astype(np.float32).ravel(order="C")
+    # ------------------------- Build output matrix -------------------------
+    out_data = []
+    out_names = []
+
+    # EEG averaged
+    for elec in sorted(averaged.keys()):
+        out_data.append(averaged[elec])
+        out_names.append(elec)
+
+    # EOG: unipolar
+    if "EOG1" in eog_channels:
+        out_data.append(eog_channels["EOG1"])
+        out_names.append("EOG1")
+    if "EOG2" in eog_channels:
+        out_data.append(eog_channels["EOG2"])
+        out_names.append("EOG2")
+
+    # EMG bipolar
+    if "EMG1" in emg_channels and "EMG2" in emg_channels:
+        out_data.append(emg_channels["EMG1"] - emg_channels["EMG2"])
+        out_names.append("EMG1-EMG2")
+
+    out_data = np.vstack(out_data)
+
+    # ------------------------- Write binary .dat -------------------------
+    multiplexed = out_data.T.astype(np.float32).ravel(order="C")
     with open(new_dat, "wb") as f:
         f.write(multiplexed.tobytes())
 
-    print(f"Converted {len(bipolar_names)} bipolar channels × {n_samples} samples")
-    print(f"Saved new binary .dat → {new_dat}")
-
-    # ---- Step 4: Write patched .vhdr ----
+    # ------------------------- Write new .vhdr -------------------------
     with open(new_vhdr, "w", encoding="utf-8") as f_out:
         f_out.write("Brain Vision Data Exchange Header File Version 2.0\n")
-        f_out.write("; Converted with bipolar derivations\n\n")
+        f_out.write("; Averaged full-electrode signals\n\n")
+
         f_out.write("[Common Infos]\n")
         f_out.write("Codepage=UTF-8\n")
         f_out.write(f"DataFile={os.path.basename(new_dat)}\n")
@@ -284,43 +321,28 @@ def convert_brainvision_ascii_average(vhdr_file, out_dir="converted"):
         f_out.write("DataFormat=BINARY\n")
         f_out.write("DataOrientation=MULTIPLEXED\n")
         f_out.write("DataType=TIMEDOMAIN\n")
-        f_out.write(f"NumberOfChannels={len(bipolar_names)}\n")
+        f_out.write(f"NumberOfChannels={len(out_names)}\n")
         f_out.write(f"DataPoints={n_samples}\n")
-        f_out.write("SamplingInterval=4000\n")  # 1000 Hz → 250 Hz
+        f_out.write("SamplingInterval=4000\n")
 
         f_out.write("\n[Binary Infos]\n")
         f_out.write("BinaryFormat=IEEE_FLOAT_32\n")
 
         f_out.write("\n[Channel Infos]\n")
-        for i, ch in enumerate(bipolar_names, start=1):
+        for i, ch in enumerate(out_names, start=1):
             f_out.write(f"Ch{i}={ch},,,µV\n")
 
-    print(f"Patched .vhdr → {new_vhdr}")
-
-    # ---- Step 5: Copy/patch .vmrk ----
+    # ------------------------- Write/Copy .vmrk -------------------------
     if vmrk_file and os.path.exists(vmrk_file):
         shutil.copy(vmrk_file, new_vmrk)
-        print(f"Copied .vmrk → {new_vmrk}")
     else:
         with open(new_vmrk, "w", encoding="utf-8") as f:
             f.write("Brain Vision Data Exchange Marker File, Version 1.0\n")
-            f.write("; Created by converter\n")
             f.write("[Common Infos]\n")
             f.write("Codepage=UTF-8\n")
             f.write("[Marker Infos]\n")
-            f.write("; no markers\n")
             f.write("[Marker Data]\n")
-        print(f"Created empty .vmrk → {new_vmrk}")
 
     return new_vhdr
 
 
-if __name__ == "__main__":
-    base_path = "D:/Intercranial_sleep_data/2/iEEG/"
-    vhdr_files = [os.path.join(base_path,"2_night1_01.vhdr"),
-                  os.path.join(base_path,"2_night1_02.vhdr"),
-                  os.path.join(base_path,"2_night1_03.vhdr")]
-    binary_file = "D:/converted_sleep_data/2/con_full/"
-    for file in vhdr_files:
-        print(f"converting {file}")
-        convert_brainvision_ascii(file, binary_file)
