@@ -15,7 +15,7 @@ from joblib import Parallel, delayed
 from specparam import SpectralModel
 from neurodsp.aperiodic import compute_irasa, fit_irasa, compute_fluctuations
 from collections import defaultdict
-from scipy.stats import zscore
+from scipy.stats import zscore, sem
 from fooof import FOOOF
 import seaborn as sns
 import EntropyHub as EH
