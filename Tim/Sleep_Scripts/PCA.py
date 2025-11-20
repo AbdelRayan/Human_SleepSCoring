@@ -1,3 +1,8 @@
+"""
+Several functions to select the contact which produces the biggest signal in 3d space
+By: Tim Veldema
+Date: 20/11/25
+"""
 import numpy as np
 import mne
 from scipy.signal import welch

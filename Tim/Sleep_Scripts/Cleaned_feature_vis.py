@@ -1,3 +1,9 @@
+"""
+Several functions for plotting features and LFP data in individual subjects
+By: Tim veldema
+Date: 20/11/2025
+"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import ticker

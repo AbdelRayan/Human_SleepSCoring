@@ -31,7 +31,6 @@ ch_types = {
     'EMG1-EMG2':'emg'
 }
 
-
 def get_path(file):
     """
     Returns the directory path and file name separately.
