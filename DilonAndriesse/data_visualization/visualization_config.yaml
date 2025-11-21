@@ -9,7 +9,7 @@ paths:
   anno: 'pre_processing/input/annotation_raw'
   # input folder
   #mat: 'D:\dilon_data\datasets\MOTORWP4_dataset\sleep-edf_channel_test_mats'
-  mat: 'D:\dilon_data\mat_collection\main'
+  mat: 'D:\dilon_data\mat_collection\static'
   # path to bandpower output
   bandpower: 'pre_processing/bandpower'
   # path to data visualization

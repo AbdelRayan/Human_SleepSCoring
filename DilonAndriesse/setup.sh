@@ -1,1 +1,1 @@
-pip install matplotlib==3.10.5 numpy==2.2.6 scipy==1.16.1 mne==1.10.1 yasa==0.6.5
+pip install numpy matplotlib scipy scikit-learn && git clone https://github.com/cudamat/cudamat.git && cd cudamat && python setup.py install --user && pip install nose && cd test && nosetests && python ../examples/bench_cudamat.py
