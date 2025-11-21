@@ -8,7 +8,7 @@ from scipy.signal import savgol_filter
 from neurodsp.aperiodic import compute_irasa, fit_irasa, compute_fluctuations
 import seaborn as sns
 import EntropyHub as EH
-import Cleaned_feature_vis as C
+import Human_SleepSCoring.Tim.Sleep_Scripts.Cleaned_feature_vis as C
 
 @contextmanager
 def suppress_stdout():
