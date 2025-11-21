@@ -1,0 +1,263 @@
+import numpy as np
+import h5py
+from scipy.stats import mode
+from scipy.io import loadmat
+import os
+import sys
+
+# get parent directory path to be able to import from parallel directory
+module_path = os.path.abspath(os.path.join('..'))
+if module_path not in sys.path:
+    sys.path.append(module_path)
+
+from hdf5_files.computing_features import psd_multitaper, wei_normalizing, index_W, index_N, index_R, Index_1, Index_2, Index_3, Index_4, calc_aperiodic_fit, calc_dfa, calc_mse
+from hdf5_files.Artefacts_Detection import removeArtefacts, artefact_epochs
+
+
+def getNewFeatures(raw_noise, raw_delta, raw_theta, raw_sigma, raw_gamma, raw_emg, states, fs, epoch_length):
+  """
+  Computes new features from raw data.
+
+  Parameters:
+      raw_fpz (numpy.ndarray): The data from the frontal EEG.
+      raw_pz (numpy.ndarray): The data from the parenial EEG.
+      raw_emg (numpy.ndarray): The data from the EMG.
+      raw_eog (numpy.ndarray): The data from the EOG.
+      states (numpy.ndarray): The sleep states.
+      fs (float) : the sampling frequency.
+      epoch_length (int) : the length of an epoch in seconds.
+
+  Returns:
+      new_features (numpy.ndarray): The computed features.
+      mapped_scores (numpy.ndarray): The mapped sleep scores.
+
+  Notes:
+      This function first computes the EMG from the raw data. 
+      It then computes the power spectral density (PSD) in different frequency bands for the raw data. 
+      The PSDs are normalized and smoothed to be used as features. 
+      The function also computes several indices from the PSDs, normalizes and smooths them, and uses them as features. 
+      The function returns a matrix of these features along with the mapped sleep scores.
+  """
+  # Get mapped scores
+  sleep_scoring = np.ravel(states)
+  reshaped_scores = sleep_scoring[:len(sleep_scoring) // (epoch_length*fs) * (epoch_length*fs)].reshape(-1, epoch_length*fs)
+  majority_scores = mode(reshaped_scores, axis=1).mode.flatten()
+  mapped_scores = np.array(majority_scores)
+
+  #Frequency ranges
+  noise_band = [0,0.5]
+  delta_band = [0.5,3.99]
+  theta_band = [4,7.99]
+  sigma_band = [11,15]
+  gamma_band = [30,40]
+  # proper data window length based on epoch and sampling frequency
+  window_length = fs*epoch_length
+
+  # Get powers
+  noise = psd_multitaper(np.ravel(raw_noise), fs, noise_band, window_length)
+  delta = psd_multitaper(np.ravel(raw_delta), fs, delta_band, window_length)
+  theta = psd_multitaper(np.ravel(raw_theta), fs, theta_band, window_length)
+  sigma = psd_multitaper(np.ravel(raw_sigma), fs, sigma_band, window_length)
+  gamma = psd_multitaper(np.ravel(raw_gamma), fs, gamma_band, window_length)
+
+  # Normalize all these powers
+  noise_norm = wei_normalizing(noise)
+  delta_norm = wei_normalizing(delta)
+  theta_norm = wei_normalizing(theta)
+  sigma_norm = wei_normalizing(sigma)
+  gamma_norm = wei_normalizing(gamma)
+  emg_norm = wei_normalizing(raw_emg)
+
+  # Get smoothed powers as feature
+  noise_smoothed = np.convolve(np.convolve(np.convolve(noise_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
+  theta_smoothed = np.convolve(np.convolve(np.convolve(theta_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
+  delta_smoothed = np.convolve(np.convolve(np.convolve(delta_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
+  #emg_smoothed = np.convolve(np.convolve(np.convolve(emg_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
+
+  # Compute new indices
+  index_w = index_W(theta_norm, gamma_norm, emg_norm)
+  index_n = index_N(delta_norm, sigma_norm, gamma_norm)
+  index_r = index_R(delta_norm, theta_norm, sigma_norm, emg_norm, gamma_norm)
+  index_1 = Index_1(delta_norm, gamma_norm, emg_norm)
+  index_2 = Index_2(delta_norm, theta_norm, sigma_norm)
+  index_3 = Index_3(delta_norm, theta_norm, gamma_norm)
+  index_4 = Index_4(delta_norm, theta_norm)
+
+  # Take log of indices
+  index_w_log = np.log(index_w)
+  index_n_log = np.log(index_n)
+  index_r_log = np.log(index_r)
+  index_1_log = np.log(index_1)
+  index_2_log = np.log(index_2)
+  index_3_log = np.log(index_3)
+  index_4_log = np.log(index_4)
+
+  # Normalise indices
+  index_w_norm = wei_normalizing(index_w_log)
+  index_n_norm = wei_normalizing(index_n_log)
+  index_r_norm = wei_normalizing(index_r_log)
+  index_1_norm = wei_normalizing(index_1_log)
+  index_2_norm = wei_normalizing(index_2_log)
+  index_3_norm = wei_normalizing(index_3_log)
+  index_4_norm = wei_normalizing(index_4_log)
+
+  # Smooth indices
+  index_w_smoothed = np.convolve(np.convolve(np.convolve(index_w_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
+  index_n_smoothed = np.convolve(np.convolve(np.convolve(index_n_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
+  index_r_smoothed = np.convolve(np.convolve(np.convolve(index_r_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
+  index_1_smoothed = np.convolve(np.convolve(np.convolve(index_1_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
+  index_2_smoothed = np.convolve(np.convolve(np.convolve(index_2_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
+  index_3_smoothed = np.convolve(np.convolve(np.convolve(index_3_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
+  index_4_smoothed = np.convolve(np.convolve(np.convolve(index_4_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
+
+  window_size = epoch_length * fs
+  aperiodic = calc_aperiodic_fit(raw_delta, window_size, epoch_length, fs)
+  aperiodic = np.array(aperiodic)
+  #aperiodic_norm = wei_normalizing(aperiodic)
+  dfa = calc_dfa(raw_delta, window_size, window_size, fs)
+  dfa = np.array(dfa)
+  #dfa_norm = wei_normalizing(dfa)
+  mse = calc_mse(raw_delta, window_size, window_size, fs)
+  mse = np.array(mse)
+  #mse_norm = wei_normalizing(mse)
+  # Create matrix
+  # new_features = np.column_stack((index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed))
+  new_features = np.column_stack((index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed, aperiodic, dfa, mse))
+  
+  
+  return new_features, mapped_scores
+
+
+def prepare_for_hdf5(subject_name, recording, fs, files_path, epoch_length, path_to_hdf5):
+  """
+  Prepares data for HDF5 format.
+  
+  Parameters:
+      recording (list): The list containing names of the fpz, pz, and states data files.
+      fs (float) : The sampling frequency.
+      files_path (str) : The path that leads to the files.
+      epoch_length (int) : the length of an epoch in seconds.
+  
+  Returns:
+      Features (numpy.ndarray): The computed features from fpz and Pz data. It consists of a list of 10 indices for each epoch.
+      Mapped_scores (numpy.ndarray): The mapped sleep scores after adding artefact epochs.
+      recording_name (str): The name of the recording group.
+  """
+  # Get the right data
+  for i in recording:
+    if 'Noise' in i:
+      noise = i
+    if 'Delta' in i:
+      delta = i
+    if 'Theta' in i:
+      theta = i
+    if 'Sigma' in i:
+      sigma = i
+    if 'Gamma' in i:
+      gamma = i
+
+    elif 'EMG' in i:
+      emg = i
+    elif 'EOG' in i:
+      eog = i
+    elif 'states' in i:
+      sleep_states = i
+
+  print(f"Subject name: {subject_name}")
+
+  noise_data = loadmat(os.path.join(files_path, noise))
+  noise_data = next(v for k, v in noise_data.items() if 'Noise' in k)
+  sig_noise = removeArtefacts(noise_data, fs, [9,8], [0.2,0.1])
+  noise_filt = np.ravel(sig_noise[0])
+  noise_artefact_indexes = np.ravel(sig_noise[1])
+
+  delta_data = loadmat(os.path.join(files_path, delta))
+  delta_data = next(v for k, v in delta_data.items() if 'Delta' in k)
+  sig_delta = removeArtefacts(delta_data, fs, [9,8], [0.2,0.1])
+  delta_filt = np.ravel(sig_delta[0])
+  delta_artefact_indexes = np.ravel(sig_delta[1])
+
+  theta_data = loadmat(os.path.join(files_path, theta))
+  theta_data = next(v for k, v in theta_data.items() if 'Theta' in k)
+  sig_theta = removeArtefacts(theta_data, fs, [9,8], [0.2,0.1])
+  theta_filt = np.ravel(sig_theta[0])
+  theta_artefact_indexes = np.ravel(sig_theta[1])
+
+  sigma_data = loadmat(os.path.join(files_path, sigma))
+  sigma_data = next(v for k, v in sigma_data.items() if 'Sigma' in k)
+  sig_sigma = removeArtefacts(sigma_data, fs, [9,8], [0.2,0.1])
+  sigma_filt = np.ravel(sig_sigma[0])
+  sigma_artefact_indexes = np.ravel(sig_sigma[1])
+
+  gamma_data = loadmat(os.path.join(files_path, gamma))
+  gamma_data = next(v for k, v in gamma_data.items() if 'Gamma' in k)
+  sig_gamma = removeArtefacts(gamma_data, fs, [9,8], [0.2,0.1])
+  gamma_filt = np.ravel(sig_gamma[0])
+  gamma_artefact_indexes = np.ravel(sig_gamma[1])
+
+  EMG_data = loadmat(os.path.join(files_path, emg))
+  emg_data = next(v for k, v in EMG_data.items() if 'EMG' in k)
+  sig_emg = removeArtefacts(emg_data, fs, [9,8], [0.2,0.1])
+  emg_filt = np.ravel(sig_emg[0])
+  emg_artefact_indexes = np.ravel(sig_emg[1])
+  emg_filt = emg_filt[:len(emg_filt) // (epoch_length * fs) * (epoch_length*fs)]
+  emg_filt = emg_filt.reshape(-1, (epoch_length * fs))
+  emg_filt = emg_filt.sum(axis=1)
+
+  sleep_scoring = loadmat(os.path.join(files_path, sleep_states))
+  states = sleep_scoring['states']
+  states = states[0]
+
+  print(len(delta_filt))
+
+  # Create matrix for specific set of recordings
+  a = getNewFeatures(noise_filt, delta_filt, theta_filt, sigma_filt, gamma_filt, emg_filt, states, fs, epoch_length)
+  Features = a[0]
+  Mapped_scores = a[1]
+  print(f"Size of epoched features: {len(Features)}")
+  print(f"Size of epoched states: {len(Mapped_scores)}")
+
+  # Add the artefact epochs to mapped scores
+  window_length = fs * epoch_length
+
+
+  noise_arte_epochs = artefact_epochs(noise_artefact_indexes, window_length)
+  delta_arte_epochs = artefact_epochs(delta_artefact_indexes, window_length)
+  theta_arte_epochs = artefact_epochs(theta_artefact_indexes, window_length)
+  sigma_arte_epochs = artefact_epochs(sigma_artefact_indexes, window_length)
+  gamma_arte_epochs = artefact_epochs(gamma_artefact_indexes, window_length)
+  emg_arte_epochs = artefact_epochs(emg_artefact_indexes, window_length)
+  artefact_indices = np.unique(np.concatenate((noise_arte_epochs, delta_arte_epochs, theta_arte_epochs, sigma_arte_epochs, gamma_arte_epochs, emg_arte_epochs)))
+  artefact_indices = artefact_indices.astype(int)
+  #print(f"Total amount of artefacts indices: {len(artefact_indices)}")
+  Mapped_scores[artefact_indices] = 5 
+
+  update_hdf5((Features, Mapped_scores, subject_name), path_to_hdf5)
+  # return (Features, Mapped_scores, recording_name)
+
+
+def update_hdf5(result, path_to_hdf5):
+  """
+  Updates an HDF5 file with the data of a recording (features and mapped scores)/
+  
+  Parameters:  
+      a (tuple): A tuple containing the features, mapped scores, and the recording name.
+      path_to_hdf5 (str): The path to the HDF5 file to be updated.
+  
+  Notes:
+      This function opens the HDF5 file at the given path in append mode.
+      It creates a new group in the file with the name of the recording.
+      The group is given two attributes: 'Description features' and 'Description Mapped_scores', 
+      which describe the features and mapped scores respectively.
+      Two datasets, 'Features' and 'Mapped_scores', are created in the group using the data from the input tuple.
+  """
+  # Add the data to the hdf5 file
+  with h5py.File(path_to_hdf5, 'a')  as database:
+  # Create group and 2 datasets
+    print(path_to_hdf5)
+    print(result[2])
+    group = database.create_group(str(result[2]))
+    group.attrs['Description features'] = '[index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed, aperiodic, dfa, mse]'
+    group.attrs['Description Mapped_scores'] = '[0: Wake, 1: N1, 2: N2, 3: N3, 4: REM, 5: Movement]'
+    group.create_dataset('Features', data = result[0])
+    group.create_dataset('Mapped_scores', data = result[1])
