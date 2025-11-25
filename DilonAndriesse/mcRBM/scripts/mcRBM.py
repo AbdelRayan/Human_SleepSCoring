@@ -174,6 +174,8 @@ class mcRBM:
 
         # kinetic energy
         energy = energy + 0.5 * (vel ** 2).sum(axis=0)
+        
+        return energy
 
     # same as the previous function. Needed only if the energy has to be computed
     # and stored to check the training process
@@ -211,6 +213,8 @@ class mcRBM:
         # kinetic energy
         t6 = 0.5 * (data ** 2)  # DxP
         energy = energy + t6.sum(axis=0)
+
+        return energy
 
     # Function taken from original code
     #################################################################
@@ -298,29 +302,19 @@ class mcRBM:
         thresh = old_energy - new_energy
         cp.exp(thresh)
         t4 = cp.random.randn(*t4.shape, dtype=cp.float32)
-        print("t4:", t4.shape)
         #t4.fill_with_rand()
         cp.less(t4, thresh)
-        print("t4:", t4.shape)
         #    update negdata and rejection rate
         t4 *= -1
         t4 += 1  # now 1's detect rejections
         t5 = t4.sum(axis=1, keepdims=True)
-        print("t5:", t5.shape)
         t5.get()
         rej = t5[0, 0] / batch_size
 
-        repeats = data.shape[1] // t4.shape[1]  # number of repeats to match columns
-        t4_expanded = cp.repeat(t4, repeats=repeats, axis=1)  # expand t4 to match data
-        # Multiply and store in target
-        t6[:] = data * t4_expanded
-        #t6[:] = data * t4[cp.newaxis, :]
-                # Assuming block_size = t4.shape[1]
-        repeats = negdata.shape[1] // t4.shape[1]  # number of repeats to match columns
-        t4_expanded = cp.repeat(t4, repeats=repeats, axis=1)  # expand t4 to match data
-        # Multiply and store in target
-        t7[:] = negdata * t4_expanded
-        #t7[:] = negdata * t4[cp.newaxis, :]
+        t6 = data * t4
+        
+        t7 = negdata * t4
+
         negdata -= t7
         negdata += t6
         hmc_ave_rej = 0.9 * hmc_ave_rej + 0.1 * rej
@@ -587,12 +581,10 @@ class mcRBM:
             # ~ data_test.mult_by_row(normcoeff_test, target = normdata_test) # normalized data
 
             for batch in range(num_batches):
-
                 # get current minibatch
                 start = batch * self.batch_size
                 end = (batch + 1) * self.batch_size
-                data = dev_dat[start:end, :]
-                print("data:", data.shape)
+                data = dev_dat[:, start:end]
                 # data = dev_dat.slice(batch * self.batch_size,
                 #                      (batch + 1) * self.batch_size)  # DxP (nr dims x nr samples)
 
@@ -604,43 +596,38 @@ class mcRBM:
                 length = cp.sqrt(lengthsq)
                 normcoeff = 1.0/length  # 1xP
                 normdata = data * normcoeff  # normalized data
-                print("normdata:", normdata.shape)
                 ## compute positive sample derivatives
                 # covariance part
                 feat = cp.dot(VF.T, normdata)  # HxP (nr facs x nr samples)
-                print("feat:", feat.shape)
                 featsq = feat ** 2  # HxP
-                print("featsq:", featsq.shape)
                 t1 = cp.dot(FH.T, featsq)  # OxP (nr cov hiddens x nr samples)
-                print("t1:", t1.shape)
                 t1 = t1 * (-0.5)
-                print("bias_cov:", bias_cov.shape)
+
                 bias_cov = bias_cov.ravel()
                 t1 = t1 + bias_cov[:, cp.newaxis]  # OxP
-                print("t1:", t1.shape)
+
                 t2 = 1 / (1 + cp.exp(-t1)) # OxP
-                print("t2:", t2.shape)
+
                 t2 = cp.squeeze(t2)
-                print("t2 after squeenze:", t2.shape)
+
                 FHinc = cp.dot(featsq, t2.T)  # HxO
                 t3 = cp.dot(FH, t2)  # HxP
-                print("t3:", t3.shape)
+
                 t3 = t3 * feat
                 VFinc += cp.dot(normdata, t3.T)  # VxH
-                print("VFinc:", VFinc.shape)
+
                 bias_covinc = -1 * t2.sum(axis=1)
+
                 # visible bias
-                bias_visinc = -1 * data.sum(axis=1)
+                bias_visinc = -1 * data.sum(axis=1, keepdims=True)
                 # mean part
-                print("w_mean:", w_mean.shape)
-                print("data:", data.shape)
+
                 feat_mean = cp.dot(w_mean.T, data)  # HxP (nr mean hiddens x nr samples)
-                print("feat_mean:", feat_mean.shape)
+
                 bias_mean = bias_mean.ravel()
                 feat_mean = feat_mean + bias_mean[:, cp.newaxis]  # HxP
                 feat_mean = 1 / (1 + cp.exp(-feat_mean)) # HxP
                 feat_mean = feat_mean * (-1)
-                print("feat_mean_2:", feat_mean.shape)
 
                 w_meaninc = cp.dot(data, feat_mean.T)
                 bias_meaninc = feat_mean.sum(axis=1)
@@ -684,7 +671,7 @@ class mcRBM:
                 VFinc -= cp.dot(normdata, t3.T)          # subtract update
 
                 bias_covinc += t2.sum(axis=1)            # Ox1
-                bias_visinc += negdata.sum(axis=1)       # Vx1
+                bias_visinc += negdata.sum(axis=1, keepdims=True)       # Vx1
 
                 # --- mean part ---
                 feat_mean = cp.dot(w_mean.T, negdata)    # HxP
@@ -693,7 +680,7 @@ class mcRBM:
                 bias_meaninc += feat_mean.sum(axis=1)
 
                 # --- update parameters ---
-                VFinc += VF.sign() * weightcost
+                VFinc += cp.sign(VF) * weightcost
                 VF -= (epsilonVFc / self.batch_size) * VFinc
 
                 # normalize columns of VF (running average)
@@ -701,12 +688,13 @@ class mcRBM:
                 t10 = cp.sqrt(t8.sum(axis=0))
                 normVF = 0.95 * normVF + 0.05 / self.num_fac * t10.sum()
                 VF = VF * (1.0 / t10) * normVF  # normalize columns
-
+                
                 bias_cov -= (epsilonbc / self.batch_size) * bias_covinc
+            
                 bias_vis -= (epsilonbc / self.batch_size) * bias_visinc
 
                 if epoch > self.startFH:
-                    FHinc += FH.sign() * weightcost
+                    FHinc += cp.sign(FH) * weightcost
                     FH -= (epsilonFHc / self.batch_size) * FHinc
 
                     # zero out negative entries
@@ -719,47 +707,53 @@ class mcRBM:
                     col_sum = FH.sum(axis=0)
                     FH = FH / col_sum
 
-                w_meaninc += w_mean.sign() * weightcost
+                w_meaninc += cp.sign(w_mean) * weightcost
                 w_mean -= (epsilonw_meanc / self.batch_size) * w_meaninc
                 bias_mean -= (epsilonb_meanc / self.batch_size) * bias_meaninc
 
             if self.verbose == 1:
-                print("VF: " + '%3.2e' % VF.euclid_norm() + ", DVF: " + '%3.2e' % (VFinc.euclid_norm() * (
-                        epsilonVFc / self.batch_size)) + ", FH: " + '%3.2e' % FH.euclid_norm() + ", DFH: " + '%3.2e' % (
-                              FHinc.euclid_norm() * (
-                              epsilonFHc / self.batch_size)) + ", bias_cov: " + '%3.2e' % bias_cov.euclid_norm() + ", Dbias_cov: " + '%3.2e' % (
-                              bias_covinc.euclid_norm() * (
-                              epsilonbc / self.batch_size)) + ", bias_vis: " + '%3.2e' % bias_vis.euclid_norm() + ", Dbias_vis: " + '%3.2e' % (
-                              bias_visinc.euclid_norm() * (
-                              epsilonbc / self.batch_size)) + ", wm: " + '%3.2e' % w_mean.euclid_norm() + ", Dwm: " + '%3.2e' % (
-                              w_meaninc.euclid_norm() * (
-                              epsilonw_meanc / self.batch_size)) + ", bm: " + '%3.2e' % bias_mean.euclid_norm() + ", Dbm: " + '%3.2e' % (
-                              bias_meaninc.euclid_norm() * (
-                              epsilonb_meanc / self.batch_size)) + ", step: " + '%3.2e' % hmc_step + ", rej: " + '%3.2e' % hmc_ave_rej)
+                print(
+                    "VF: " + '%3.2e' % cp.linalg.norm(VF)
+                    + ", DVF: " + '%3.2e' % (cp.linalg.norm(VFinc) * (epsilonVFc / self.batch_size))
+                    + ", FH: " + '%3.2e' % cp.linalg.norm(FH)
+                    + ", DFH: " + '%3.2e' % (cp.linalg.norm(FHinc) * (epsilonFHc / self.batch_size))
+                    + ", bias_cov: " + '%3.2e' % cp.linalg.norm(bias_cov)
+                    + ", Dbias_cov: " + '%3.2e' % (cp.linalg.norm(bias_covinc) * (epsilonbc / self.batch_size))
+                    + ", bias_vis: " + '%3.2e' % cp.linalg.norm(bias_vis)
+                    + ", Dbias_vis: " + '%3.2e' % (cp.linalg.norm(bias_visinc) * (epsilonbc / self.batch_size))
+                    + ", wm: " + '%3.2e' % cp.linalg.norm(w_mean)
+                    + ", Dwm: " + '%3.2e' % (cp.linalg.norm(w_meaninc) * (epsilonw_meanc / self.batch_size))
+                    + ", bm: " + '%3.2e' % cp.linalg.norm(bias_mean)
+                    + ", Dbm: " + '%3.2e' % (cp.linalg.norm(bias_meaninc) * (epsilonb_meanc / self.batch_size))
+                    + ", step: " + '%3.2e' % hmc_step
+                    + ", rej: " + '%3.2e' % hmc_ave_rej
+                )
                 with open('terminal.txt', 'a') as f:
                     f.write('\n' + "epoch: %s" % str(
-                        epoch) + ", VF: " + '%3.2e' % VF.euclid_norm() + ", DVF: " + '%3.2e' % (VFinc.euclid_norm() * (
-                            epsilonVFc / self.batch_size)) + ", FH: " + '%3.2e' % FH.euclid_norm() + ", DFH: " + '%3.2e' % (
-                                    FHinc.euclid_norm() * (
-                                    epsilonFHc / self.batch_size)) + ", bias_cov: " + '%3.2e' % bias_cov.euclid_norm() + ", Dbias_cov: " + '%3.2e' % (
-                                    bias_covinc.euclid_norm() * (
-                                    epsilonbc / self.batch_size)) + ", bias_vis: " + '%3.2e' % bias_vis.euclid_norm() + ", Dbias_vis: " + '%3.2e' % (
-                                    bias_visinc.euclid_norm() * (
-                                    epsilonbc / self.batch_size)) + ", wm: " + '%3.2e' % w_mean.euclid_norm() + ", Dwm: " + '%3.2e' % (
-                                    w_meaninc.euclid_norm() * (
-                                    epsilonw_meanc / self.batch_size)) + ", bm: " + '%3.2e' % bias_mean.euclid_norm() + ", Dbm: " + '%3.2e' % (
-                                    bias_meaninc.euclid_norm() * (
-                                    epsilonb_meanc / self.batch_size)) + ", step: " + '%3.2e' % hmc_step + ", rej: " + '%3.2e' % hmc_ave_rej)
+                        epoch) + ", VF: " + '%3.2e' % cp.linalg.norm(VF)
+                                + ", DVF: " + '%3.2e' % (cp.linalg.norm(VFinc) * (epsilonVFc / self.batch_size))
+                                + ", FH: " + '%3.2e' % cp.linalg.norm(FH)
+                                + ", DFH: " + '%3.2e' % (cp.linalg.norm(FHinc) * (epsilonFHc / self.batch_size))
+                                + ", bias_cov: " + '%3.2e' % cp.linalg.norm(bias_cov)
+                                + ", Dbias_cov: " + '%3.2e' % (cp.linalg.norm(bias_covinc) * (epsilonbc / self.batch_size))
+                                + ", bias_vis: " + '%3.2e' % cp.linalg.norm(bias_vis)
+                                + ", Dbias_vis: " + '%3.2e' % (cp.linalg.norm(bias_visinc) * (epsilonbc / self.batch_size))
+                                + ", wm: " + '%3.2e' % cp.linalg.norm(w_mean)
+                                + ", Dwm: " + '%3.2e' % (cp.linalg.norm(w_meaninc) * (epsilonw_meanc / self.batch_size))
+                                + ", bm: " + '%3.2e' % cp.linalg.norm(bias_mean)
+                                + ", Dbm: " + '%3.2e' % (cp.linalg.norm(bias_meaninc) * (epsilonb_meanc / self.batch_size))
+                                + ", step: " + '%3.2e' % hmc_step
+                                + ", rej: " + '%3.2e' % hmc_ave_rej)
                 sys.stdout.flush()
 
             # commented to avoid computing the energy on trainig data
-            self.compute_energy_mcRBM_visual(data, normdata, energy, VF, FH, bias_cov, bias_vis, w_mean, bias_mean, t1,
+            energy = self.compute_energy_mcRBM_visual(data, normdata, energy, VF, FH, bias_cov, bias_vis, w_mean, bias_mean, t1,
                                              t2, t6, feat, featsq, feat_mean, length, lengthsq, normcoeff, small,
                                              num_vis)
-            energy.get()
-            meanEnergy[epoch] = np.mean(energy)
-            minEnergy[epoch] = np.min(energy)
-            maxEnergy[epoch] = np.max(energy)
+            energy_cpu = energy.get()
+            meanEnergy[epoch] = np.mean(energy_cpu)
+            minEnergy[epoch] = np.min(energy_cpu)
+            maxEnergy[epoch] = np.max(energy_cpu)
 
             # commented to avoid computing the energy on test data
             # ~ self.compute_energy_mcRBM_visual(data_test,normdata_test,energy_test,VF,FH,bias_cov,bias_vis,w_mean,bias_mean,t1_test,t2_test,t6_test,feat_test,featsq_test,feat_mean_test,length_test,lengthsq_test,normcoeff_test,small,num_vis)
@@ -769,26 +763,31 @@ class mcRBM:
             # ~ maxEnergy_test[epoch] = np.max(energy_test.numpy_array)
 
             ax1.cla()
-            ax1.plot(list(range(epoch)), meanEnergy[0:epoch])
-            ax1.plot(list(range(epoch)), maxEnergy[0:epoch])
-            ax1.plot(list(range(epoch)), minEnergy[0:epoch])
+            ax1.plot(list(range(epoch)), meanEnergy[0:epoch], label="meanEnergy")
+            ax1.plot(list(range(epoch)), maxEnergy[0:epoch], label="maxEnergy")
+            ax1.plot(list(range(epoch)), minEnergy[0:epoch], label="minEnergy")
 
+            plt.legend()
             if np.mod(epoch, 100) == 0:
                 # f1.savefig(output_folder + str(epoch)+'_'+'fig.png')
                 f1.savefig(self.plotsDir + '/energy/energyAt_%s.png' % str(epoch))
 
             # back-up every once in a while
             if np.mod(epoch, 100) == 0:
-                VF.get()
-                FH.get()
-                bias_cov.get()
-                w_mean.get()
-                bias_mean.get()
-                bias_vis.get()
-                savemat("./weights/ws_temp%s" % str(epoch),
-                        {'VF': VF, 'FH': FH, 'bias_cov': bias_cov,
-                         'bias_vis': bias_vis, 'w_mean': w_mean,
-                         'bias_mean': bias_mean, 'epoch': epoch})
+                VF_cpu = VF.get()
+                FH_cpu = FH.get()
+                bias_cov_cpu = bias_cov.get()
+                w_mean_cpu = w_mean.get()
+                bias_mean_cpu = bias_mean.get()
+                bias_vis_cpu = bias_vis.get()
+                savemat("./weights/ws_temp%s.mat" % epoch,  # added .mat extension
+                        {'VF': VF_cpu,
+                         'FH': FH_cpu,
+                         'bias_cov': bias_cov_cpu,
+                         'bias_vis': bias_vis_cpu,
+                         'w_mean': w_mean_cpu,
+                         'bias_mean': bias_mean_cpu,
+                         'epoch': epoch})
 
                 # uncomment if computing the energy in order to store its evolution throghout training
                 # ~ savemat(self.refDir + '/' + "training_energy_" + str(self.num_fac) + "_cov" + str(self.num_hid_cov) + "_mean" + str(self.num_hid_mean), {'meanEnergy':meanEnergy,'meanEnergy_test':meanEnergy_test,'maxEnergy': maxEnergy, 'maxEnergy_test': maxEnergy_test, 'minEnergy': minEnergy, 'minEnergy_test': minEnergy_test, 'epoch':epoch})
@@ -801,15 +800,19 @@ class mcRBM:
                 break
 
         # final back-up
-        VF.get()
-        FH.get()
-        bias_cov.get()
-        bias_vis.get()
-        w_mean.get()
-        bias_mean.get()
-        savemat("ws_fac%s" % str(self.num_fac) + "_cov%s" % str(self.num_hid_cov) + "_mean%s" % str(self.num_hid_mean),
-                {'VF': VF, 'FH': FH, 'bias_cov': bias_cov,
-                 'bias_vis': bias_vis, 'w_mean': w_mean, 'bias_mean': bias_mean,
+        VF_cpu = VF.get()
+        FH_cpu = FH.get()
+        bias_cov_cpu = bias_cov.get()
+        w_mean_cpu = w_mean.get()
+        bias_mean_cpu = bias_mean.get()
+        bias_vis_cpu = bias_vis.get()
+        savemat("./weights/ws_temp%s.mat" % epoch,  # added .mat extension
+                {'VF': VF_cpu,
+                 'FH': FH_cpu,
+                 'bias_cov': bias_cov_cpu,
+                 'bias_vis': bias_vis_cpu,
+                 'w_mean': w_mean_cpu,
+                 'bias_mean': bias_mean_cpu,
                  'epoch': epoch})
 
         # uncomment if computing the energy in order to store its evolution throghout training
