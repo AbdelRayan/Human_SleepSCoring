@@ -23,13 +23,13 @@ statesFile = states.mat
 expsDir = C:/Users/timmi/PycharmProjects/AutomatedSleepScoring/Human_SleepSCoring/Tim/DeepNeuralNetworkSleep/mcRBM/sample_data/experiments/
 
 # give a name to your experiment:
-expID = test1_human_intra
+expID = intra-cranial_human_data_V1
 
 # set the name of the model directory
-modelDirName = extracranial_human_data_V1
+modelDirName = intra-cranial_human_data_V1/weights/
 
 # set the name of the model
-modelName = ws_fac11_cov11_mean10
+modelName = ws_temp9999.mat
 ############################################################################################################################
 # DATA PRE-PROCESSING FLAGS:                                                                                                            #
 #            logFlag         	    flag indicating whether to take the log of the data matrix                                          #

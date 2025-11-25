@@ -146,43 +146,100 @@ class GetStates(object):
         return 1. / (1. + np.exp(-x))
 
     def hidden_activation(self):
+        # Load model
         if self.expDoneFlag == 'True':
             print(self.modelDir + self.model)
             ws_temp = loadmat(self.modelDir + self.model)
-
         else:
             temp_model = input("Please enter the training epoch you want to analyze: ")
             ws_temp = loadmat('./weights/ws_temp%d.mat' % int(temp_model))
-        w_mean = ws_temp['w_mean']
-        FH = ws_temp['FH']
-        VF = ws_temp['VF']
-        bias_cov = ws_temp['bias_cov']
-        bias_mean = ws_temp['bias_mean']
+
+        # Extract model params
+        w_mean = ws_temp['w_mean']  # expected shape: (n_vis, n_mean)
+        FH = ws_temp['FH']  # expected shape: (n_fac, n_cov)
+        VF = ws_temp['VF']  # expected shape: (n_vis, n_fac)
+        bias_cov = ws_temp['bias_cov']  # may be (n_cov,1) or (1,n_cov) or (n_cov,)
+        bias_mean = ws_temp['bias_mean']  # may be (n_mean,1) or (1,n_mean) or (n_mean,)
         self.epochID = ws_temp['epoch']
-        dsq = np.square(self.d)
-        lsq = np.sum(dsq, axis=0)
-        lsq /= self.d.shape[1]
-        lsq += np.spacing(1)
-        l = np.sqrt(lsq)
-        normD = self.d / l
 
-        logisticArg_c = (-0.5 * np.dot(FH.T, np.square(np.dot(VF.T, normD.T))) + bias_cov).T
+        # Print model shapes for debugging
+        print("Model shapes:")
+        print("  VF:", getattr(VF, 'shape', None))
+        print("  FH:", getattr(FH, 'shape', None))
+        print("  w_mean:", getattr(w_mean, 'shape', None))
+        print("  bias_cov:", getattr(bias_cov, 'shape', None))
+        print("  bias_mean:", getattr(bias_mean, 'shape', None))
+        print("Data shape (as loaded):", getattr(self, 'd', None).shape)
 
-        print("logisticArg_c min : ", np.min(logisticArg_c))
-        print("logisticArg_c max : ", np.max(logisticArg_c))
-        print("logisticArg_c mean : ", np.mean(logisticArg_c))
-        print(np.isfinite(logisticArg_c).all())
+        # --- Normalise data ---
+        # We want self.d to have shape (n_vis, n_samples)
+        # Model's expected n_vis is w_mean.shape[0] or VF.shape[0]
+        n_vis_model = w_mean.shape[0] if w_mean is not None else VF.shape[0]
 
-        p_hc = self.logisticFunc(logisticArg_c)
+        # Ensure self.d shape matches (n_vis_model, n_samples)
+        d_shape = self.d.shape
+        if d_shape[0] == n_vis_model:
+            d_mat = self.d  # already (n_vis, n_samples)
+        elif d_shape[1] == n_vis_model:
+            # transpose if data is (n_samples, n_vis)
+            d_mat = self.d.T
+            print("Transposed self.d to match model visible dimension.")
+        else:
+            raise ValueError(
+                f"Data dimension mismatch: model expects {n_vis_model} visibles but data shape is {d_shape}.")
 
-        logisticArg_m = np.dot(self.d, w_mean) + bias_mean.T
+        # compute per-sample lengths and normalized data
+        dsq = np.square(d_mat)  # (n_vis, n_samples)
+        lsq = np.sum(dsq, axis=0)  # (n_samples,)
+        lsq = lsq / d_mat.shape[0]  # normalize by n_vis (like original)
+        lsq = lsq + np.spacing(1)
+        l = np.sqrt(lsq)  # (n_samples,)
+        normD = d_mat / l  # broadcasting -> (n_vis, n_samples)
 
-        print("logisticArg_m min : ", np.min(logisticArg_m))
-        print("logisticArg_m max : ", np.max(logisticArg_m))
-        print("logisticArg_m mean : ", np.mean(logisticArg_m))
-        print(np.isfinite(logisticArg_m).all())
+        # --- Covariance pathway ---
+        # shapes:
+        # VF.T @ normD     -> (n_fac, n_samples)
+        # square -> same
+        # FH.T @ featsq    -> (n_cov, n_samples)
+        feats = VF.T.dot(normD)  # (n_fac, n_samples)
+        featsq = np.square(feats)  # (n_fac, n_samples)
+        pre_cov = -0.5 * (FH.T.dot(featsq))  # (n_cov, n_samples)
 
-        p_hm = self.logisticFunc(logisticArg_m)
+        # normalize bias_cov shape to (n_cov, 1) so broadcast along samples is correct
+        bias_cov = np.array(bias_cov).reshape(-1)  # (n_cov,)
+        bias_cov = bias_cov[:, np.newaxis]  # (n_cov, 1)
+
+        logisticArg_c = (pre_cov + bias_cov).T  # transpose -> (n_samples, n_cov)
+
+        # Debug prints for covariance pre-activation
+        print("logisticArg_c shape:", logisticArg_c.shape)
+        print("logisticArg_c min:", np.min(logisticArg_c))
+        print("logisticArg_c max:", np.max(logisticArg_c))
+        print("logisticArg_c mean:", np.mean(logisticArg_c))
+        print("all finite:", np.isfinite(logisticArg_c).all())
+
+        p_hc = self.logisticFunc(logisticArg_c)  # (n_samples, n_cov)
+
+        # --- Mean pathway ---
+        # Ensure w_mean shape (n_vis, n_mean)
+        # We want dot result shape (n_samples, n_mean)
+        # If d_mat is (n_vis, n_samples), do (d_mat.T @ w_mean) -> (n_samples, n_mean)
+        dot_mean = d_mat.T.dot(w_mean)  # (n_samples, n_mean)
+
+        # normalize bias_mean to (1, n_mean) for row-wise addition
+        bias_mean = np.array(bias_mean).reshape(-1)  # (n_mean,)
+        bias_mean_row = bias_mean[np.newaxis, :]  # (1, n_mean)
+
+        logisticArg_m = dot_mean + bias_mean_row  # (n_samples, n_mean)
+
+        # Debug prints for mean pre-activation
+        print("logisticArg_m shape:", logisticArg_m.shape)
+        print("logisticArg_m min:", np.min(logisticArg_m))
+        print("logisticArg_m max:", np.max(logisticArg_m))
+        print("logisticArg_m mean:", np.mean(logisticArg_m))
+        print("all finite:", np.isfinite(logisticArg_m).all())
+
+        p_hm = self.logisticFunc(logisticArg_m)  # (n_samples, n_mean)
 
         return p_hc, p_hm
 
