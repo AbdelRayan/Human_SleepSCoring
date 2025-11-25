@@ -829,37 +829,8 @@ def fractal_power_component(states, subject, raw_pfc, output_dir, epoch, sf, f_r
 def slope_per_state(output_dir, mean_raw_slope_by_state, mean_smoothed_slope_by_state,
                     states, eeg_in_epochs, sf=250, f_range=(0.3, 30)):
     """
-    Compute and visualize slope values per sleep state from IRASA analysis of EEG/PFC epochs.
-
-    This function:
-        - Computes the fractal slope for each EEG epoch using IRASA.
-        - Filters out invalid or low-quality epochs.
-        - Z-normalizes the slopes.
-        - Smooths the slopes using a Savitzky-Golay filter.
-        - Computes mean slopes per sleep stage for both raw and smoothed slopes.
-        - Plots mean slopes per state with separate markers for raw and smoothed values.
-
-    Parameters
-    ----------
-    output_dir : str
-        Directory to save the resulting plot.
-    mean_raw_slope_by_state : dict
-        Dictionary of raw slope values per state.
-    mean_smoothed_slope_by_state : dict
-        Dictionary of smoothed slope values per state.
-    states : array-like
-        Numeric sleep stage labels per epoch (0=W, 1=N1, 2=N2, 3=N3, 4=REM).
-    eeg_in_epochs : list of arrays
-        EEG/PFC signal divided into epochs.
-    sf : float, optional
-        Sampling frequency of the EEG signal (default=250 Hz).
-    f_range : tuple, optional
-        Frequency range for IRASA computation (default=(0.3, 30) Hz).
-
-    Returns
-    -------
-    smoothed_slopes : array
-        Z-normalized, Savitzky-Golay smoothed slopes across epochs.
+    Compute slopes per epoch using IRASA and return a full-length, interpolated,
+    smoothed slope vector aligned with the hypnogram.
     """
 
     import numpy as np
@@ -867,12 +838,15 @@ def slope_per_state(output_dir, mean_raw_slope_by_state, mean_smoothed_slope_by_
     from scipy.stats import zscore
     from scipy.signal import savgol_filter
 
-    epoch_slopes = []  # store slopes for each valid epoch
-    valid_states = []  # store corresponding sleep stages
+    epoch_slopes = np.full(len(states), np.nan)  # full-length slope container
 
     # --- Compute slope for each epoch using IRASA ---
     for i, eeg_epoch in enumerate(eeg_in_epochs):
-        freqs, psd_aperiodic, _ = compute_irasa(eeg_epoch, sf, f_range=f_range)
+
+        try:
+            freqs, psd_aperiodic, _ = compute_irasa(eeg_epoch, sf, f_range=f_range)
+        except Exception:
+            continue
 
         # Filter out invalid values
         valid = np.isfinite(psd_aperiodic) & (psd_aperiodic > 0)
@@ -883,72 +857,63 @@ def slope_per_state(output_dir, mean_raw_slope_by_state, mean_smoothed_slope_by_
         if len(freqs) < 5:
             continue
 
-        # Fit slope and store
         try:
             intercept, slope = fit_irasa(freqs, psd_aperiodic)
-            epoch_slopes.append(slope)
-            valid_states.append(states[i])
+            epoch_slopes[i] = slope
         except Exception:
             continue
 
-    # Convert lists to arrays
-    epoch_slopes = np.array(epoch_slopes)
-    valid_states = np.array(valid_states)
+    # --- Interpolate missing slope epochs ---
+    n = len(epoch_slopes)
+    x = np.arange(n)
+    mask = np.isfinite(epoch_slopes)
+
+    # If too few valid epochs, avoid failure
+    if mask.sum() < 2:
+        raise ValueError("Not enough valid IRASA epochs to interpolate slopes.")
+
+    # Fill missing values by linear interpolation
+    epoch_slopes_interp = np.interp(x, x[mask], epoch_slopes[mask])
 
     # --- Z-score normalization ---
-    raw_slopes = zscore(epoch_slopes)
-    min_len = min(len(raw_slopes), len(valid_states))
-    raw_slopes = raw_slopes[:min_len]
-    valid_states = valid_states[:min_len]
+    raw_slopes = zscore(epoch_slopes_interp)
 
-    # --- Smooth slopes using Savitzky-Golay filter ---
+    # --- Savitzky-Golay smoothing ---
     window_length = min(101, len(raw_slopes) // 2 * 2 + 1)  # must be odd
     smoothed_slopes = savgol_filter(raw_slopes, window_length, polyorder=5, mode='interp')
+
+    # Final z-score after smoothing (optional but recommended)
     smoothed_slopes = zscore(smoothed_slopes)
 
-    # --- Compute mean slopes per valid state ---
+    # --- Compute mean slopes per state ---
     mean_slope_per_state = {}
     smoothed_mean_slope_per_state = {}
-    for state in np.unique(valid_states):
-        mask = valid_states == state
-        mean_slope_per_state[state] = np.nanmean(raw_slopes[mask])
-        smoothed_mean_slope_per_state[state] = np.nanmean(smoothed_slopes[mask])
+    for state in np.unique(states):
+        mask_state = (states == state)
+        mean_slope_per_state[state] = np.nanmean(raw_slopes[mask_state])
+        smoothed_mean_slope_per_state[state] = np.nanmean(smoothed_slopes[mask_state])
 
-    # Sort stages for plotting
+    # Plotting for sanity check
     stages_sorted = sorted(mean_slope_per_state.keys())
+    mean_slopes = [mean_slope_per_state[s] for s in stages_sorted]
+    smoothed_means = [smoothed_mean_slope_per_state[s] for s in stages_sorted]
 
-    # Extract mean slopes for plotting
-    mean_slopes = [
-        np.mean(mean_raw_slope_by_state[state])
-        for state in stages_sorted if state in mean_raw_slope_by_state
-    ]
-    smoothed_mean_slopes = [
-        np.mean(mean_smoothed_slope_by_state[state])
-        for state in stages_sorted if state in mean_smoothed_slope_by_state
-    ]
-
-    # --- Plotting ---
     plt.figure(figsize=(7, 6))
-    plt.grid(axis='x', color='lightgray', linestyle='--', linewidth=0.5, zorder=0)
-    plt.axhline(0, color='gray', linewidth=1, alpha=0.5, zorder=0)
+    plt.grid(axis='x', color='lightgray', linestyle='--', linewidth=0.5)
+    plt.axhline(0, color='gray', linewidth=1, alpha=0.5)
 
-    # Scatter points for raw and smoothed mean slopes
-    plt.scatter(stages_sorted, mean_slopes, color='black', marker='s', s=60, label='raw slope', zorder=2)
-    plt.scatter(stages_sorted, smoothed_mean_slopes, color='green', marker='s', s=30, label='smoothed slope', zorder=2)
+    plt.scatter(stages_sorted, mean_slopes, color='black', marker='s', s=60, label='raw slope')
+    plt.scatter(stages_sorted, smoothed_means, color='green', marker='s', s=30, label='smoothed slope')
 
-    # Dashed lines connecting points
-    plt.plot(stages_sorted, mean_slopes, color='black', linestyle='--', alpha=0.6, zorder=2)
-    plt.plot(stages_sorted, smoothed_mean_slopes, color='green', linestyle='--', alpha=0.6, zorder=2)
+    plt.plot(stages_sorted, mean_slopes, color='black', linestyle='--', alpha=0.6)
+    plt.plot(stages_sorted, smoothed_means, color='green', linestyle='--', alpha=0.6)
 
-    # Labels and aesthetics
     plt.ylabel('Z-normalized slope')
     plt.xlabel('Sleep Stage')
     plt.title('Slope per state')
     plt.ylim(-2, 2)
     plt.legend()
     plt.tight_layout()
-
-    # Save figure
     plt.savefig(f"{output_dir}/slope_per_state.svg", format="svg")
 
     return smoothed_slopes
@@ -1096,7 +1061,7 @@ def fractal_slope_vs_hypnogram(subject, smoothed_slopes, output_dir, states, epo
 
     ax2.set_xlabel('Time (minutes)')
     ax2.set_ylabel('Z-normalized fractal slope')
-    ax2.set_ylim(-2, 2)
+    ax2.set_ylim(-3, 3)
     ax2.set_xlim(time_axis[0], time_axis[-1])
     ax2.set_title(f'Fractal slopes - {subject}')
     ax2.legend()
