@@ -239,7 +239,7 @@ class StatesAnalysis(object):
 
         EEG_range = [math.floor(self.dinit[:,:self.dinit.shape[1]-1].min()), math.ceil(self.dinit[:,:self.dinit.shape[1]-1].max())]
         print("self.uniqueStates :", self.uniqueStates)
-        all_latent_states = np.empty((len(self.uniqueStates[:, 0]), 14))
+        all_latent_states = np.empty((len(self.uniqueStates[:, 0]), 19))
         for i in self.uniqueStates[:, 0]:
             id_bin = self.uniqueStates[i,13:]
             print("id_bin :", id_bin)
@@ -1627,7 +1627,7 @@ class StatesAnalysis(object):
         """
         ax.invert_yaxis()
         ax.xaxis.tick_top()
-
+        print(labels)
         ax.set_xticklabels(labels, minor=False, fontweight='bold', fontsize=20)
         ax.set_yticklabels(labels, minor=False, fontweight='bold', fontsize=20)
 

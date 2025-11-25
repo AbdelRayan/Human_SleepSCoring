@@ -162,15 +162,6 @@ class GetStates(object):
         bias_mean = ws_temp['bias_mean']  # may be (n_mean,1) or (1,n_mean) or (n_mean,)
         self.epochID = ws_temp['epoch']
 
-        # Print model shapes for debugging
-        print("Model shapes:")
-        print("  VF:", getattr(VF, 'shape', None))
-        print("  FH:", getattr(FH, 'shape', None))
-        print("  w_mean:", getattr(w_mean, 'shape', None))
-        print("  bias_cov:", getattr(bias_cov, 'shape', None))
-        print("  bias_mean:", getattr(bias_mean, 'shape', None))
-        print("Data shape (as loaded):", getattr(self, 'd', None).shape)
-
         # --- Normalise data ---
         # We want self.d to have shape (n_vis, n_samples)
         # Model's expected n_vis is w_mean.shape[0] or VF.shape[0]
