@@ -662,7 +662,9 @@ class StatesAnalysis(object):
         Set features' labels for visualization part
         """     
         self.visibleFeatures = ['v%d' %(i+1) for i in range(self.d.shape[1])]
-        self.initFeatures = ['IndexW', 'IndexR', 'IndexN', 'Index1', 'Index2', 'Index3', 'Index4', '0-0.5hz', 'Theta', 'Delta']
+        self.initFeatures = ['IndexW', 'IndexR', 'IndexN', 'Index1', 'Index2',
+                             'Index3', 'Index4', '0-0.5hz', 'Theta', 'Delta',
+                             'Aperiodic_Fit', "DFA", "MSE"]
 
         # if self.features=='bands':
         #     self.initFeatures = ['Delta', 'Theta', 'Delta/Theta', 'EMG']
