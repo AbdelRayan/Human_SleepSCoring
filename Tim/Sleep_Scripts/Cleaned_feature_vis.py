@@ -130,6 +130,51 @@ def normalised_powers(EMG_norm, noise_norm, delta_norm, theta_norm, sigma_norm, 
     plt.savefig(f"{output_dir}/Normalised_powers.svg", format='svg', dpi=300)
     # plt.show()  # Uncomment to display figure interactively
 
+
+def normalised_powers_paper(noise_norm, delta_norm, theta_norm, sigma_norm, gamma_norm,
+                            epoch_length, output_dir):
+    """
+    Paper-ready plot of selected normalized EEG powers: noise, delta, theta, sigma, gamma.
+    X-axis is in minutes.
+
+    Parameters:
+    - noise_norm, delta_norm, theta_norm, sigma_norm, gamma_norm: np.array, normalized EEG band powers
+    - epoch_length: float/int, duration of one epoch in seconds
+    - output_dir: str, folder path to save the resulting figure
+
+    Saves:
+    - SVG and PDF figure of selected normalized powers.
+    """
+
+    # Create 5 vertically stacked subplots sharing the same x-axis
+    fig, axes = plt.subplots(5, 1, sharex=True, figsize=(10, 8))
+    plt.rcParams.update({'font.size': 12})
+
+    # Time vector in minutes
+    epochs = np.arange(len(noise_norm))
+    x = epochs * epoch_length / 60  # minutes
+
+    # List of signals and labels
+    signals = [noise_norm, delta_norm, theta_norm, sigma_norm, gamma_norm]
+    labels = ['Noise power', 'Delta power', 'Theta power', 'Sigma power', 'Gamma power']
+
+    for ax, sig, label in zip(axes, signals, labels):
+        ax.plot(x, sig, color='black', lw=0.8)
+        ax.set_ylabel(label)
+        # Auto-scale y-limits with small margin
+        margin = 0.05 * (sig.max() - sig.min())
+        ax.set_ylim(sig.min() - margin, sig.max() + margin)
+        ax.grid(True, which='both', linestyle='--', alpha=0.3)
+
+    axes[-1].set_xlabel('Time (min)')
+
+    # Tight layout for publication
+    plt.tight_layout()
+
+    # Save as high-quality SVG and PDF for vector graphics
+    plt.savefig(f"{output_dir}/Normalised_powers.svg", format='svg', dpi=300)
+    plt.close()
+
 def normalised_EMG(EMG_norm, output_dir):
     """
     Plot a normalized EMG signal across epochs.
@@ -153,21 +198,8 @@ def normalised_EMG(EMG_norm, output_dir):
     plt.savefig(f"{output_dir}/Normalised_EMG.svg", format='svg', dpi=300)
     # plt.show()
 
+
 def raw_signals(states, raw_hpc, raw_pfc, pfc_tag, hpc_tag, output_dir, fs, epoch_length):
-    """
-    Plot raw HPC and PFC signals along with upsampled sleep states.
-
-    Parameters:
-    - states: np.array, sleep states per epoch
-    - raw_hpc, raw_pfc: np.array, raw EEG signals
-    - pfc_tag, hpc_tag: str, names of the signals for titles
-    - output_dir: str, folder path to save figure
-    - fs: int, sampling frequency in Hz
-    - epoch_length: int/float, duration of one epoch in seconds
-
-    Saves:
-    - SVG figure of raw signals and hypnogram.
-    """
     # Upsample states to match signal length
     upsampled_states = np.repeat(states, int(fs * epoch_length))
     target_len = len(raw_hpc)
@@ -179,42 +211,116 @@ def raw_signals(states, raw_hpc, raw_pfc, pfc_tag, hpc_tag, output_dir, fs, epoc
     elif len(upsampled_states) > target_len:
         upsampled_states = upsampled_states[:target_len]
 
-    x = np.arange(len(raw_hpc)) / fs  # time vector in seconds
+    # Time vector in minutes for clarity in long recordings
+    x = np.arange(len(raw_hpc)) / fs / 60  # time in minutes
 
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True, figsize=(28, 12))
+    # Paper-ready figure
+    fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(12, 6))  # smaller than original
+    plt.rcParams.update({'font.size': 12})
 
-    ax1.plot(x, raw_pfc, color='black')
-    ax2.plot(x, raw_hpc, color='black')
-    ax3.plot(x, upsampled_states, color='black')
+    # Plot raw signals
+    ax1.plot(x, raw_pfc, color='black', lw=0.8)
+    ax2.plot(x, raw_hpc, color='black', lw=0.8)
 
     # Titles and labels
-    ax1.set_title(f'RAW {pfc_tag} Signal')
-    ax2.set_title(f'RAW {hpc_tag} Signal')
-    ax3.set_title('U-sleep Scoring')
+    ax1.set_title(f'Raw {pfc_tag} Signal', fontsize=14, fontweight='bold')
+    ax2.set_title(f'Raw {hpc_tag} Signal', fontsize=14, fontweight='bold')
+    ax1.set_ylabel('Amplitude (V)')
+    ax2.set_ylabel('Amplitude (V)')
+    ax2.set_xlabel('Time (min)')
 
-    ax1.set_ylabel('Amplitude')
-    ax2.set_ylabel('Amplitude')
-    ax3.set_ylabel('States')
-    ax3.set_xlabel('Time (s)')
+    # Auto-scale y-limits with small margin
+    for ax, sig in zip([ax1, ax2], [raw_pfc, raw_hpc]):
+        margin = 0.05 * (sig.max() - sig.min())
+        ax.set_ylim(sig.min() - margin, sig.max() + margin)
+        ax.grid(True, which='both', linestyle='--', alpha=0.3)
 
-    state_labels = ['Wake', 'N1', 'N2', 'N3', 'REM']
-    ax3.set_yticks([0, 1, 2, 3, 4])
-    ax3.set_yticklabels(state_labels)
-    ax3.invert_yaxis()
-
-    # Example fixed y-limits for EEG signals (adjust as needed)
-    ax1.set_ylim(-0.001, 0.001)
-    ax2.set_ylim(-0.001, 0.001)
-
-    # Grid for all axes
-    for ax in [ax1, ax2, ax3]:
-        ax.grid(True, which='both', axis='both', linestyle='--', alpha=0.6)
-
+    # Tight layout for publication
     plt.tight_layout()
-    plt.savefig(f"{output_dir}/RAW_signals_Hypnogram.svg", format='svg', dpi=300)
-    # plt.show()
 
-def indices_vs_hypnogram(epochs, hypno_epochs, index_w, index_n, index_r, mapped_scores, output_dir):
+    # Save as high-quality SVG for vector graphics
+    plt.savefig(f"{output_dir}/RAW_signals.svg", format='svg', dpi=300)
+    plt.close()
+
+
+def combined_raw_and_power_plot(states, raw_hpc, raw_pfc, pfc_tag, hpc_tag,
+                                noise_norm, delta_norm, theta_norm, sigma_norm, gamma_norm,
+                                fs, epoch_length, output_dir, panel_label=None):
+    """
+    Creates a paper-ready figure containing:
+      - Raw PFC
+      - Raw HPC
+      - 5 normalized power bands
+
+    Includes a journal-style panel label (A/B/etc.) when provided.
+    """
+
+    # ---- Upsample states ----
+    upsampled_states = np.repeat(states, int(fs * epoch_length))
+    target_len = len(raw_hpc)
+    if len(upsampled_states) < target_len:
+        upsampled_states = np.concatenate((upsampled_states, np.zeros(target_len - len(upsampled_states))))
+    else:
+        upsampled_states = upsampled_states[:target_len]
+
+    # Time for raw signals (minutes)
+    t = np.arange(len(raw_hpc)) / fs / 60
+
+    # Time for epoch-wise signals (minutes)
+    epochs = np.arange(len(noise_norm))
+    t_pow = epochs * epoch_length / 60
+
+    # ---- Create figure ----
+    fig, axes = plt.subplots(7, 1, sharex=True, figsize=(12, 12))
+    plt.rcParams.update({'font.size': 12})
+
+    # ---- FIX #2: Add top + left margins to avoid panel label overlap ----
+    plt.subplots_adjust(left=0.14, top=0.92)
+
+    # ---- PANEL LABEL (journal style: outside axes, bold, top-left) ----
+    if panel_label is not None:
+        fig.text(0.02, 0.965, panel_label,
+                 fontsize=20, fontweight='bold', va='top', ha='left')
+
+    # ---- RAW SIGNALS ----
+    axes[0].plot(t, raw_pfc, color='black', lw=0.8)
+    axes[0].set_title(f'Raw {pfc_tag} Signal', fontsize=12)
+    axes[0].set_ylabel('Amplitude (V)')
+    axes[0].set_ylim(-0.001, 0.001)
+
+    axes[1].plot(t, raw_hpc, color='black', lw=0.8)
+    axes[1].set_title(f'Raw {hpc_tag} Signal', fontsize=12)
+    axes[1].set_ylabel('Amplitude (V)')
+    axes[1].set_ylim(-0.001, 0.001)
+
+    for ax in axes[:2]:
+        ax.grid(True, linestyle='--', alpha=0.3)
+
+    # ---- NORMALIZED POWERS ----
+    powers = [noise_norm, delta_norm, theta_norm, sigma_norm, gamma_norm]
+    labels = ['Noise', 'Delta', 'Theta', 'Sigma', 'Gamma']
+
+    for ax, sig, label in zip(axes[2:], powers, labels):
+        ax.plot(t_pow, sig, color='black', lw=0.8)
+        ax.set_ylabel(label)
+
+        # Auto-scale with margin
+        margin = 0.05 * (sig.max() - sig.min())
+        ax.set_ylim(sig.min() - margin, sig.max() + margin)
+
+        ax.grid(True, linestyle='--', alpha=0.3)
+
+    axes[-1].set_xlabel('Time (min)')
+
+    # ---- Export ----
+    outA = f"{output_dir}/figure_{panel_label}.svg"
+    outB = f"{output_dir}/figure_{panel_label}.pdf"
+    fig.savefig(outA, dpi=300)
+    fig.savefig(outB, dpi=300)
+
+    plt.close()
+
+def indices_vs_hypnogram(epochs, hypno_epochs, index_w, index_n, index_r, mapped_scores, output_dir, show=False):
     """
     Plot smoothed Wei indices (W, N, R) alongside hypnogram scores.
 
@@ -263,9 +369,12 @@ def indices_vs_hypnogram(epochs, hypno_epochs, index_w, index_n, index_r, mapped
         ax.grid(True, which='major', axis='y', linestyle='--', alpha=0.6)
 
     plt.tight_layout()
-    plt.savefig(f'{output_dir}/all_new_indices_vs_wei.svg', format='svg')
-    plt.close()
-    # plt.show()
+    if show:
+        plt.savefig(f'{output_dir}/all_new_indices_vs_wei.svg', format='svg')
+        plt.show()
+    else:
+        plt.savefig(f'{output_dir}/all_new_indices_vs_wei.svg', format='svg')
+        plt.close()
 
 def index_barplot(index_n, index_r, index_w, mapped_scores, output_dir):
     """
