@@ -746,7 +746,7 @@ class mcRBM:
                                 + ", rej: " + '%3.2e' % hmc_ave_rej)
                 sys.stdout.flush()
 
-            # commented to avoid computing the energy on trainig data
+            # commented to avoid computing the energy on training data
             energy = self.compute_energy_mcRBM_visual(data, normdata, energy, VF, FH, bias_cov, bias_vis, w_mean, bias_mean, t1,
                                              t2, t6, feat, featsq, feat_mean, length, lengthsq, normcoeff, small,
                                              num_vis)
