@@ -1,13 +1,27 @@
+import sys
+print(sys.executable)
+print(sys.version)
+
 import os
 import sys
 import numpy as np
-import pandas as pd
+# import pandas as pd
 from numpy.random import RandomState
 from scipy.io import loadmat, savemat
 from configparser import ConfigParser
 import PIL.Image
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
+
+def inspect_npz(filepath):
+    print(f"Inspecting: {filepath}\n")
+
+    data = np.load(filepath)
+    print("Keys:", data.files)
+
+    for key in data.files:
+        arr = data[key]
+        print(f"{key}: shape={arr.shape}, dtype={arr.dtype}")
 
 class GetStates(object):
     def __init__(self, refDir, expDoneFlag, modelDir, finalModel):
@@ -22,15 +36,20 @@ class GetStates(object):
 
         self.saveDir = self.refDir
 
+
+
     def loadData(self, statesFilePath, statesFile):
         os.chdir(self.saveDir)
         print("Analysing experiment : ", os.getcwd())
 
         visData = 'visData.npz'
+        inspect_npz(visData)
         dataFile = np.load(visData)
         self.d = dataFile['data']
         self.obsKeys = dataFile['obsKeys'].astype(int)
         self.states = loadmat(f'{statesFilePath}{statesFile}')
+        print("dataFile zeik:", dataFile["data"].shape)
+        print(f"STATES: ", self.states['states'][0].shape)
         self.states['downsampledStates'] = self.states.pop('states')
 
     def computeStates(self):
@@ -42,7 +61,7 @@ class GetStates(object):
         if not os.path.isdir('analysis'):
             os.makedirs('analysis')
         os.chdir('analysis')
-        
+
 
         if not os.path.isdir('epoch%d' % self.epochID):
             os.makedirs('epoch%d' % self.epochID)
@@ -58,7 +77,7 @@ class GetStates(object):
             os.makedirs('binaryActivation')
 
         image = PIL.Image.fromarray(np.uint8(p_hc * 255.))
-        resized_image = image.resize((1200, 1200))        
+        resized_image = image.resize((1200, 1200))
         image.save('./hcActivation/%i.png' % self.epochID)
 
         image = PIL.Image.fromarray(np.uint8(p_hm * 255.))
@@ -74,7 +93,7 @@ class GetStates(object):
         plt.savefig('./binaryActivation/%i.png' % self.epochID)
 
         str_repr = np.array([''.join(map(str, row)) for row in self.binary_latentActivation])
-        
+
         unique_bin, uniqueFramesID, ic = np.unique(str_repr, return_index=True, return_inverse=True)
         uniqueAct = self.binary_latentActivation[uniqueFramesID]
         uniqueCount = np.array([np.sum(ic == i) for i in range(len(uniqueFramesID))])
@@ -91,11 +110,11 @@ class GetStates(object):
 
             row_indices = np.where((self.binary_latentActivation == uniqueAct[i]).all(axis=1))[0]
 
-            inferredStates[row_indices, 0] = i + 1 
+            inferredStates[row_indices, 0] = i + 1
 
-        np.savez_compressed('latentStates.npz', 
-                            probabilities=self.p_all, 
-                            binary=self.binary_latentActivation, 
+        np.savez_compressed('latentStates.npz',
+                            probabilities=self.p_all,
+                            binary=self.binary_latentActivation,
                             inferredStates=inferredStates,
                             uniqueStates=uniqueStates)
 

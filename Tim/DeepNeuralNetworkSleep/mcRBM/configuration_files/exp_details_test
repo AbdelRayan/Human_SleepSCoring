@@ -13,23 +13,23 @@ dsetDir = C:/Users/timmi/PycharmProjects/AutomatedSleepScoring/Human_SleepSCorin
 
 # set the name of the dataset to be analysed:
 # it can be a .mat or a .npz file (see sample-data)
-dSetName = Features.npz
+dSetName = test_features.npz
 
 # set the name of the states file:
 # it needs to be a .mat file
-statesFile = states.mat
+statesFile = test_scores.mat
 
 # set the path to the analysis directory:
 expsDir = C:/Users/timmi/PycharmProjects/AutomatedSleepScoring/Human_SleepSCoring/Tim/DeepNeuralNetworkSleep/mcRBM/sample_data/experiments/
 
 # give a name to your experiment:
-expID = intra-cranial_human_data_V1
+expID = Intra_cranial_Human_exp_2
 
 # set the name of the model directory
-modelDirName = intra-cranial_human_data_V1/weights/
+modelDirName = Intra_cranial_Human_exp_2/weights/
 
 # set the name of the model
-modelName = ws_temp9999.mat
+modelName = ws_temp800.mat
 ############################################################################################################################
 # DATA PRE-PROCESSING FLAGS:                                                                                                            #
 #            logFlag         	    flag indicating whether to take the log of the data matrix                                          #
