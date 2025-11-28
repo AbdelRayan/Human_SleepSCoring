@@ -3,6 +3,8 @@ print(sys.executable)
 print(sys.version)
 
 import os
+if "MPLBACKEND" in os.environ:
+    del os.environ["MPLBACKEND"]
 import sys
 import numpy as np
 # import pandas as pd
@@ -10,9 +12,10 @@ from numpy.random import RandomState
 from scipy.io import loadmat, savemat
 from configparser import ConfigParser
 import PIL.Image
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
-
 def inspect_npz(filepath):
     print(f"Inspecting: {filepath}\n")
 
