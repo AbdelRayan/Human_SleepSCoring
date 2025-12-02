@@ -27,10 +27,10 @@ def training_dataset(file_path, n_states, n_repeat_states, subjects):
 
     array_scores_total = np.array([])
     array_features_total = np.empty((0, 13))
-    indices_artefact_total = np.array([])
     indices_wake_total = np.array([])
-    indices_nrem_total = np.array([])
-    indices_TS_total = np.array([])
+    indices_n1_total = np.array([])
+    indices_n2_total = np.array([])
+    indices_n3_total = np.array([])
     indices_rem_total = np.array([])
     with h5py.File(file_path, 'r') as hdf:
         for group_name in hdf.keys():

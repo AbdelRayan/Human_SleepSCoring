@@ -1283,9 +1283,9 @@ class StatesAnalysis(object):
 
         # ax1.set_yticklabels(ax1.get_yticks(), fontweight='bold', fontsize=30)
 
-        filename = 'lStatesHistogram.png'
+        filename = 'lStatesHistogram.svg'
         filename = os.path.join('./statesHistogram/', filename)
-        f1.savefig(filename)
+        f1.savefig(filename, format='svg')
 
     # Function for dispaying an array
     def displayMat(self, matrixToDisplay, column_labels, filename):

@@ -7,6 +7,7 @@ Date: 20/11/2025
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import ticker
+from matplotlib.gridspec import GridSpec
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 import pandas as pd
@@ -19,6 +20,7 @@ from scipy.stats import zscore, sem
 from fooof import FOOOF
 import seaborn as sns
 import EntropyHub as EH
+from matplotlib.gridspec import GridSpec
 
 Red = '#d13838'
 Blue = '#127be3'
@@ -439,48 +441,47 @@ def index_barplot(index_n, index_r, index_w, mapped_scores, output_dir):
     plt.tight_layout()
     plt.savefig(f"{output_dir}/index_barplots.svg", format='svg', dpi=300)
 
-def index_pca(index_n, mapped_scores_old, index_r, index_w, output_dir):
+def index_pca(indices_list, mapped_scores_old, output_dir):
     """
-    Perform PCA on the three indices and plot the first two principal components
+    Perform PCA on multiple indices and plot the first two principal components
     colored by sleep stage.
 
     Args:
-        index_n, index_r, index_w (array-like): Index values per epoch.
+        indices_list (list of array-like): List of index arrays per epoch.
+                                           For 7 indices: [index_w, index_r, index_n, index_1, index_2, index_3, index_4]
         mapped_scores_old (array-like): Sleep stage labels per epoch.
         output_dir (str): Directory path to save the PCA plot SVG.
     """
-    # Smooth and normalize indices
-    index_w_smoothed = smooth_and_norm(index_w)
-    index_r_smoothed = smooth_and_norm(index_r)
-    index_n_smoothed = smooth_and_norm(index_n)
+    # Smooth and normalize all indices
+    smoothed_indices = [smooth_and_norm(idx) for idx in indices_list]
 
     # Align lengths with sleep scores if indices are longer
-    difference = len(index_w_smoothed) - len(mapped_scores_old)
-    if difference > 0:
-        index_w_smoothed = index_w_smoothed[:-difference]
-        index_r_smoothed = index_r_smoothed[:-difference]
-        index_n_smoothed = index_n_smoothed[:-difference]
+    min_length = len(mapped_scores_old)
+    smoothed_indices = [idx[:min_length] for idx in smoothed_indices]
 
     # Combine indices and sleep labels into a dataframe
-    arrays = [index_w_smoothed, index_r_smoothed, index_n_smoothed, mapped_scores_old]
-    stage_map = {0.0: "wake", 1.0: "n1", 2.0: "n2", 3.0: "n3", 4.0: "rem"}
+    arrays = smoothed_indices + [mapped_scores_old]
     array = np.column_stack(arrays)
     df = pd.DataFrame(array)
-    x = df[[0, 1, 2]]
-    y = df[3]
+
+    # Features (all indices)
+    X = df.iloc[:, :-1].to_numpy().astype(float)
+    y = df.iloc[:, -1].to_numpy()
 
     # Standardize features
     scaler = StandardScaler()
-    X = np.nan_to_num(x.to_numpy().astype(float), nan=0.0)
-    X_scaled = scaler.fit_transform(X)
+    X_scaled = scaler.fit_transform(np.nan_to_num(X, nan=0.0))
 
     # Apply PCA
-    pca = PCA(n_components=3)
+    n_components = min(3, X_scaled.shape[1])
+    pca = PCA(n_components=n_components)
     X_pca = pca.fit_transform(X_scaled)
-    print(f'PCA data points:{X_pca.shape}')
+    print(f'PCA data points: {X_pca.shape}')
 
-    # Plot PCA scatter, using colorblind-friendly palette
+    # Plot PCA scatter (first 2 PCs)
+    stage_map = {0.0: "wake", 1.0: "n1", 2.0: "n2", 3.0: "n3", 4.0: "rem"}
     colors = ['#0072B2', '#E69F00', '#D55E00', '#CC79A7', '#F0E442']
+
     plt.figure(figsize=(8, 6))
     for i, label in enumerate(np.unique(y)):
         stage_name = stage_map.get(label, str(label))
@@ -497,7 +498,178 @@ def index_pca(index_n, mapped_scores_old, index_r, index_w, output_dir):
     plt.title("PCA of Sleep Stages")
     plt.legend(title="Sleep Stage")
     plt.tight_layout()
-    plt.savefig(f"{output_dir}/Index_PCA_subject_2.svg", format='svg')
+    plt.savefig(f"{output_dir}/Index_PCA_subject.svg", format='svg')
+    plt.close()
+
+def enlarge_ticks(ax, factor=1.25):
+    for axis in [ax.xaxis, ax.yaxis]:
+        for tick in axis.get_major_ticks():
+            # label1 = main label; label2 = opposite-side label
+            for lbl in [tick.label1, tick.label2]:
+                if lbl:  # some may not exist
+                    lbl.set_fontsize(lbl.get_fontsize() * factor)
+
+def eog_vs_hypnogram_paper(EOG1, EOG2, epoch_length, fs, epochs, mapped_scores, output_dir):
+
+    N_EOG = N_feature(EOG1, EOG2, epoch_length, fs)
+    R_EOG = rem_feature(EOG1, EOG2, epoch_length, fs)
+
+    stage_labels_ordered = ['Wake', 'REM', 'N1', 'N2', 'N3']
+    stage_to_num = {label:i for i,label in enumerate(stage_labels_ordered)}
+
+    hypno_numeric = np.array([
+        stage_to_num[{0:'Wake',1:'N1',2:'N2',3:'N3',4:'REM'}[s]]
+        for s in mapped_scores
+    ])
+
+    fig = plt.figure(figsize=(20, 12))
+    gs = GridSpec(2, 1, height_ratios=[2, 1], hspace=0.35)
+
+    ax0 = fig.add_subplot(gs[0])
+
+    ax0.plot(epochs, N_EOG , label="EOG 0.3-0.45Hz",
+             color='blue', linewidth=2, alpha=0.7)
+
+    ax0.plot(epochs, R_EOG, label='EOG 0.3-35Hz',
+             color='red', linewidth=2, alpha=0.7)
+
+    ax0.set_ylabel('EOG feature value', fontsize=14)
+    ax0.set_xlabel('Epoch', fontsize=14)
+    ax0.set_title('EOG features vs Hypnogram', fontsize=16)
+    ax0.grid(True, linestyle='--', alpha=0.5)
+    ax0.legend(fontsize=12)
+
+    enlarge_ticks(ax0)
+
+    # Hypnogram overlay
+    ax0b = ax0.twinx()
+    ax0b.step(epochs, hypno_numeric, where='mid',
+              color='black', linewidth=2.8, label='Hypnogram')
+    ax0b.set_yticks(range(len(stage_labels_ordered)))
+    ax0b.set_yticklabels(stage_labels_ordered)
+    ax0b.set_ylabel('Sleep Stage', fontsize=14)
+    ax0b.invert_yaxis()
+    ax0b.legend(loc='upper right', fontsize=12)
+
+    enlarge_ticks(ax0b)
+
+    plt.savefig(f"{output_dir}/eog_vs_hypnogram.svg", format='svg')
+    plt.close()
+
+
+def combined_indices_figure(epochs, hypno_epochs, mapped_scores,
+                            indices_list, index_names,
+                            output_dir, letters=('A', 'B'), show=False):
+
+    # Define sleep stage order
+    stage_labels_ordered = ['Wake', 'REM', 'N1', 'N2', 'N3']
+    stage_to_num = {label:i for i,label in enumerate(stage_labels_ordered)}
+    colors = ['black', 'red', 'blue', '#CC79A7', '#F0E442', '#56B4E9', '#009E73']
+
+    # --- Smooth & trim indices ---
+    smoothed_indices = [smooth_and_norm(idx) for idx in indices_list]
+    min_len = min(len(mapped_scores), *(len(idx) for idx in smoothed_indices))
+    smoothed_indices = [idx[:min_len] for idx in smoothed_indices]
+    mapped_scores = mapped_scores[:min_len]
+    epochs = epochs[:min_len]
+
+    # --- Map hypnogram to desired order ---
+    hypno_numeric = np.array([
+        stage_to_num[{0:'Wake',1:'N1',2:'N2',3:'N3',4:'REM'}[s]]
+        for s in mapped_scores
+    ])
+
+    # --- Create figure: now 2 rows, not 3 ---
+    fig = plt.figure(figsize=(20, 12))
+    gs = GridSpec(2, 1, height_ratios=[2, 1], hspace=0.35)
+
+    # ===========================================================
+    #  Plot 1 — Indices vs Hypnogram
+    # ===========================================================
+    ax0 = fig.add_subplot(gs[0])
+
+    for i, idx in enumerate(smoothed_indices[:3]):
+        ax0.plot(epochs, idx, label=f'{index_names[i]}',
+                 color=colors[i], linewidth=2, alpha=0.7)
+
+    ax0.set_ylabel('Index Value', fontsize=14)
+    ax0.set_xlabel('Epoch', fontsize=14)
+    ax0.set_title('Indices vs Hypnogram', fontsize=16)
+    ax0.grid(True, linestyle='--', alpha=0.5)
+    ax0.legend(fontsize=12)
+
+    enlarge_ticks(ax0)
+
+    # Subplot letter
+    ax0.text(0.01, 0.95, letters[0], transform=ax0.transAxes,
+             fontsize=20, fontweight='bold', va='top')
+
+    # Hypnogram overlay
+    ax0b = ax0.twinx()
+    ax0b.step(hypno_epochs[:min_len], hypno_numeric, where='mid',
+              color='black', linewidth=2.8, label='Hypnogram')
+    ax0b.set_yticks(range(len(stage_labels_ordered)))
+    ax0b.set_yticklabels(stage_labels_ordered)
+    ax0b.set_ylabel('Sleep Stage', fontsize=14)
+    ax0b.invert_yaxis()
+    ax0b.legend(loc='upper right', fontsize=12)
+
+    enlarge_ticks(ax0b)
+
+    # ===========================================================
+    #  Plot 2 — Bar Plot (Average Indices per Stage)
+    # ===========================================================
+    ax1 = fig.add_subplot(gs[1])
+
+    stages = ['Wake', 'N1', 'N2', 'N3', 'REM']
+    indices_by_stage = {stage: [] for stage in stages}
+
+    for values, stage in zip(zip(*smoothed_indices[:3]),
+                             [stage_labels_ordered[s] for s in hypno_numeric]):
+        indices_by_stage[stage].append(values)
+
+    avg_indices = {
+        stage: np.mean(indices_by_stage[stage], axis=0)
+        for stage in stages
+    }
+
+    x = np.arange(len(stages))
+    bar_width = 0.25
+
+    for i in range(3):
+        ax1.bar(x + i*bar_width - bar_width,
+                [avg_indices[s][i] for s in stages],
+                width=bar_width,
+                color=colors[i],
+                label=index_names[i])
+
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(stages, fontsize=12)
+    ax1.set_ylabel('Average Index Value', fontsize=14)
+    ax1.set_xlabel('Sleep Stage', fontsize=14)
+    ax1.set_title('Average Indices per Sleep Stage', fontsize=16)
+    ax1.legend(fontsize=12)
+    ax1.grid(True, linestyle='--', alpha=0.5)
+
+    enlarge_ticks(ax1)
+
+    ax1.text(0.01, 0.95, letters[1], transform=ax1.transAxes,
+             fontsize=20, fontweight='bold', va='top')
+    ax0.set_ylim(0, 1)
+    ax1.set_ylim(0, 1)
+    # ===========================================================
+    # Save figure
+    # ===========================================================
+    plt.tight_layout()
+    save_path = f"{output_dir}/combined_indices_figure.svg"
+    plt.savefig(save_path, format='svg', dpi=300)
+
+    if show:
+        plt.show()
+    else:
+        plt.close()
+
+    print(f"Saved combined figure to: {save_path}")
 
 def aperiodic_fit(pfc_data, states, fs, raw_pfc, output_dir, epoch_length):
     """
@@ -1353,7 +1525,7 @@ def aperiodic_fit_violin(sleep_states, aperiodic_exponents, output_dir):
     plt.savefig(f"{output_dir}/Aperiodic_fit_violin.svg", format="svg")
     plt.close()
 
-def index_N(delta, alpha, EMG, EOG1, EOG2, epoch_length, fs):
+def index_N(delta, alpha, EMG, EOG1, EOG2, epoch_length, fs, gamma):
     """
     Compute non-REM sleep index per epoch using EOG features.
 
@@ -1367,7 +1539,7 @@ def index_N(delta, alpha, EMG, EOG1, EOG2, epoch_length, fs):
         np.ones(5) / 5, mode='same'
     )
 
-    alt_index_n = np.array([(eog_features[i] * delta[i]) / (alpha[i] * EMG[i]) for i in range(len(delta))])
+    alt_index_n = np.array([(eog_features[i] * delta[i]) / (gamma[i]**2) for i in range(len(delta))])
     return alt_index_n
 
 def index_R(delta, sigma, EMG, EOG1, EOG2, epoch_length, fs):
@@ -1384,7 +1556,7 @@ def index_R(delta, sigma, EMG, EOG1, EOG2, epoch_length, fs):
         np.ones(5) / 5, mode='same'
     )
 
-    alt_index_r = np.array([(eog_features[i] ** 2) / (EMG[i] ** 2 * delta[i] * sigma[i]) for i in range(len(delta))])
+    alt_index_r = np.array([(eog_features[i] ** 2) / (delta[i]*delta[i]*EMG[i]**2) for i in range(len(delta))])
     return alt_index_r
 
 def index_W(theta, gamma, EMG):
