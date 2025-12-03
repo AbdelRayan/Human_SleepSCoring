@@ -509,29 +509,42 @@ def enlarge_ticks(ax, factor=1.25):
                 if lbl:  # some may not exist
                     lbl.set_fontsize(lbl.get_fontsize() * factor)
 
-def eog_vs_hypnogram_paper(EOG1, EOG2, epoch_length, fs, epochs, mapped_scores, output_dir):
+
+def smooth_epochs(x, window=20):
+    kernel = np.ones(window) / window
+    return np.convolve(x, kernel, mode='same')
+
+def eog_vs_hypnogram_paper(EOG1, EOG2, epoch_length, fs, epochs, mapped_scores, output_dir, letters=('A', 'B')):
 
     N_EOG = N_feature(EOG1, EOG2, epoch_length, fs)
     R_EOG = rem_feature(EOG1, EOG2, epoch_length, fs)
 
     stage_labels_ordered = ['Wake', 'REM', 'N1', 'N2', 'N3']
+
     stage_to_num = {label:i for i,label in enumerate(stage_labels_ordered)}
+
+    smoothed_N_EOG = smooth_epochs(smooth_and_norm(N_EOG), window=20)
+    smoothed_R_EOG = smooth_epochs(smooth_and_norm(R_EOG), window=20)
+
+    min_len = min(len(mapped_scores), len(smoothed_N_EOG))
+    mapped_scores = mapped_scores[:min_len]
+    epochs = epochs[:min_len]
 
     hypno_numeric = np.array([
         stage_to_num[{0:'Wake',1:'N1',2:'N2',3:'N3',4:'REM'}[s]]
         for s in mapped_scores
     ])
 
-    fig = plt.figure(figsize=(20, 12))
+    fig = plt.figure(figsize=(18, 6))
     gs = GridSpec(2, 1, height_ratios=[2, 1], hspace=0.35)
 
     ax0 = fig.add_subplot(gs[0])
 
-    ax0.plot(epochs, N_EOG , label="EOG 0.3-0.45Hz",
-             color='blue', linewidth=2, alpha=0.7)
+    ax0.plot(epochs, smoothed_N_EOG[:min_len] , label="EOG 0.3-0.45Hz",
+             color='blue', linewidth=2, alpha=0.5)
 
-    ax0.plot(epochs, R_EOG, label='EOG 0.3-35Hz',
-             color='red', linewidth=2, alpha=0.7)
+    ax0.plot(epochs, smoothed_R_EOG[:min_len], label='EOG 0.3-35Hz',
+             color='red', linewidth=2, alpha=0.5)
 
     ax0.set_ylabel('EOG feature value', fontsize=14)
     ax0.set_xlabel('Epoch', fontsize=14)
@@ -553,6 +566,81 @@ def eog_vs_hypnogram_paper(EOG1, EOG2, epoch_length, fs, epochs, mapped_scores, 
 
     enlarge_ticks(ax0b)
 
+    ax0.text(0.01, 0.95, letters[0], transform=ax0.transAxes,
+             fontsize=20, fontweight='bold', va='top')
+
+    # ===========================================================
+    #  Plot 2 — Bar Plot (Average EOG Features per Stage)
+    # ===========================================================
+    ax1 = fig.add_subplot(gs[1])
+
+    stages = ['Wake', 'N1', 'N2', 'N3', 'REM']
+
+    # Feature arrays
+    feature_arrays = {
+        "EOG_N": smoothed_N_EOG[:min_len],
+        "EOG_R": smoothed_R_EOG[:min_len]
+    }
+
+    feature_names = ["N-feature (0.3–0.45 Hz)", "R-feature (0.3–35 Hz)"]
+    colors = ["blue", "red"]
+
+    # Organize values by stage
+    values_by_stage = {stage: {name: [] for name in feature_names} for stage in stages}
+
+    for i, stage_idx in enumerate(hypno_numeric):
+        stage = stage_labels_ordered[stage_idx]
+        values_by_stage[stage][feature_names[0]].append(feature_arrays["EOG_N"][i])
+        values_by_stage[stage][feature_names[1]].append(feature_arrays["EOG_R"][i])
+
+    # Compute mean + SEM
+    means = {name: [] for name in feature_names}
+
+    for stage in stages:
+        for name, arrlist in values_by_stage[stage].items():
+            arr = np.array(arrlist)
+            means[name].append(np.nanmean(arr))
+
+    # ---- Plot ----
+    x = np.arange(len(stages))
+    bar_width = 0.32
+
+    for i, name in enumerate(feature_names):
+        ax1.bar(
+            x + (i - 0.5) * bar_width,
+            means[name],
+            width=bar_width,
+            color=colors[i],
+            edgecolor='black',
+            label=name
+        )
+
+    # ---- Style ----
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(stages, fontsize=12)
+    ax1.set_ylabel('Average EOG Feature Value', fontsize=14)
+    ax1.set_xlabel('Sleep Stage', fontsize=14)
+    ax1.set_title('Average EOG Feature Values per Sleep Stage', fontsize=16)
+
+    # Paper-like formatting
+    ax1.spines['top'].set_visible(False)
+    ax1.spines['right'].set_visible(False)
+    ax1.spines['left'].set_linewidth(1.3)
+    ax1.spines['bottom'].set_linewidth(1.3)
+
+    ax1.legend(fontsize=12, frameon=True)
+    ax1.grid(True, linestyle='--', alpha=0.5)
+
+    enlarge_ticks(ax1)
+
+    # Subplot letter
+    ax1.text(0.01, 0.95, letters[1], transform=ax1.transAxes,
+             fontsize=20, fontweight='bold', va='top')
+    # ===========================================================
+    # Save figure
+    # ===========================================================
+    plt.tight_layout()
+
     plt.savefig(f"{output_dir}/eog_vs_hypnogram.svg", format='svg')
     plt.close()
 
@@ -567,7 +655,8 @@ def combined_indices_figure(epochs, hypno_epochs, mapped_scores,
     colors = ['black', 'red', 'blue', '#CC79A7', '#F0E442', '#56B4E9', '#009E73']
 
     # --- Smooth & trim indices ---
-    smoothed_indices = [smooth_and_norm(idx) for idx in indices_list]
+    smoothed_indices = [smooth_epochs(smooth_and_norm(idx)) for idx in indices_list]
+
     min_len = min(len(mapped_scores), *(len(idx) for idx in smoothed_indices))
     smoothed_indices = [idx[:min_len] for idx in smoothed_indices]
     mapped_scores = mapped_scores[:min_len]
@@ -580,7 +669,7 @@ def combined_indices_figure(epochs, hypno_epochs, mapped_scores,
     ])
 
     # --- Create figure: now 2 rows, not 3 ---
-    fig = plt.figure(figsize=(20, 12))
+    fig = plt.figure(figsize=(18, 6))
     gs = GridSpec(2, 1, height_ratios=[2, 1], hspace=0.35)
 
     # ===========================================================
@@ -590,7 +679,7 @@ def combined_indices_figure(epochs, hypno_epochs, mapped_scores,
 
     for i, idx in enumerate(smoothed_indices[:3]):
         ax0.plot(epochs, idx, label=f'{index_names[i]}',
-                 color=colors[i], linewidth=2, alpha=0.7)
+                 color=colors[i], linewidth=2, alpha=0.5)
 
     ax0.set_ylabel('Index Value', fontsize=14)
     ax0.set_xlabel('Epoch', fontsize=14)
@@ -641,6 +730,7 @@ def combined_indices_figure(epochs, hypno_epochs, mapped_scores,
                 [avg_indices[s][i] for s in stages],
                 width=bar_width,
                 color=colors[i],
+                edgecolor='black',
                 label=index_names[i])
 
     ax1.set_xticks(x)
@@ -650,6 +740,11 @@ def combined_indices_figure(epochs, hypno_epochs, mapped_scores,
     ax1.set_title('Average Indices per Sleep Stage', fontsize=16)
     ax1.legend(fontsize=12)
     ax1.grid(True, linestyle='--', alpha=0.5)
+
+    ax1.spines['top'].set_visible(False)
+    ax1.spines['right'].set_visible(False)
+    ax1.spines['left'].set_linewidth(1.3)
+    ax1.spines['bottom'].set_linewidth(1.3)
 
     enlarge_ticks(ax1)
 

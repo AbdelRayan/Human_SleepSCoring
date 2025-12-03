@@ -8,6 +8,8 @@ from scipy.signal import savgol_filter
 from neurodsp.aperiodic import compute_irasa, fit_irasa, compute_fluctuations
 import seaborn as sns
 import EntropyHub as EH
+from scipy.stats import sem
+
 import Human_SleepSCoring.Tim.Sleep_Scripts.Cleaned_feature_vis as C
 
 @contextmanager
@@ -75,51 +77,97 @@ def extract_index_values_per_state(index_n, index_r, index_w, mapped_scores):
 
     return means
 
-def plot_index_barplot(means, output_dir):
-    """
-    Plot a barplot of mean indices per sleep state.
 
-    Args:
-        means (dict): Mean index values per state, from extract_index_values_per_state.
-        output_dir (str): Directory path to save the plot SVG.
+def plot_index_barplot(collected_means, output_dir):
     """
+    Plot barplot of mean ± SEM Wei indices across sleep states.
+
+    Parameters
+    ----------
+    collected_means : dict
+        Structure:
+        collected_means[state][index] = list of subject values
+    output_dir : str
+        Directory where the SVG is saved.
+    """
+
     states = ['Wake', 'N1', 'N2', 'N3', 'REM']
+    indices = ['w', 'r', 'n']  # must match your keys
 
-    # Extract index values for plotting
-    values_w = [means[s]['w'] for s in states]
-    values_r = [means[s]['r'] for s in states]
-    values_n = [means[s]['n'] for s in states]
+    # Colors for paper-friendly plot
+    colors = {
+        'w': 'black',
+        'r': 'red',
+        'n': 'blue'
+    }
 
-    plt.figure(figsize=(12, 6))
-    fontsize = 5
+    # Paper-quality figure
+    plt.figure(figsize=(10, 6))
+    plt.rcParams.update({
+        'font.size': 14,
+        'axes.labelsize': 16,
+        'axes.titlesize': 18,
+        'xtick.labelsize': 14,
+        'ytick.labelsize': 14,
+        'legend.fontsize': 14
+    })
+
     x = np.arange(len(states))
     bar_width = 0.25
 
-    # Plot bars for each index
-    plt.bar(x - bar_width, values_w, width=bar_width, label='Index W', color='black')
-    plt.bar(x, values_r, width=bar_width, label='Index R', color='red')
-    plt.bar(x + bar_width, values_n, width=bar_width, label='Index N', color='blue')
+    # Offsets for the 3 bars
+    offsets = {
+        'w': -bar_width,
+        'r': 0,
+        'n': bar_width
+    }
 
+    # Plot each index as a bar group
+    for idx in indices:
+        means = [np.nanmean(collected_means[state][idx]) for state in states]
+        sems = [sem(collected_means[state][idx], nan_policy='omit')
+                if len(collected_means[state][idx]) > 1 else 0
+                for state in states]
+
+        plt.bar(
+            x + offsets[idx],
+            means,
+            width=bar_width,
+            label=f"Index {idx.upper()}",
+            color=colors[idx],
+            edgecolor='black',
+            linewidth=1.0
+        )
+
+        # Error bars (SEM)
+        plt.errorbar(
+            x + offsets[idx],
+            means,
+            yerr=sems,
+            fmt='none',
+            ecolor='dimgray',
+            elinewidth=2,
+            capsize=5
+        )
+
+    # Labels & title
     plt.xlabel('Sleep Stages')
-    plt.ylabel('Average Index Values')
-    plt.title('Wei Indices per Sleep State')
+    plt.ylabel('Mean Index Value ± SEM')
+    plt.title('Wei Indices Across Sleep Stages')
+    plt.ylim(0, 1)
+    # Tick labels
     plt.xticks(x, states)
-    plt.legend(loc='upper center', bbox_to_anchor=(0.3, 1))
 
-    # Add numeric values on top of bars
-    for i in range(len(states)):
-        for offset, vals, color in zip(
-            [-bar_width, 0, bar_width],
-            [values_w, values_r, values_n],
-            ['black', 'red', 'blue']
-        ):
-            if not np.isnan(vals[i]):
-                plt.text(x[i] + offset, vals[i] + 0.02, f"{vals[i]:.2f}",
-                         ha='center', va='bottom', fontsize=fontsize, color=color)
+    # Legend in box
+    plt.legend(frameon=True, loc='upper right')
 
-    plt.grid(True)
+    # Light scientific grid
+    plt.grid(axis='y', linestyle='--', linewidth=0.7, alpha=0.6)
+
+    # Layout + save
     plt.tight_layout()
-    plt.savefig(f'{output_dir}/all_new_indices_vs_wei_bar.svg', format='svg')
+    plt.savefig(f'{output_dir}/wei_indices_barplot.svg', format='svg')
+    plt.close()
 
 def prepare_aperiodic_violin_data(valid_states, normalized_exponents):
     """
@@ -599,103 +647,247 @@ def plot_index_avg_violin_all(results, output_dir):
         np.savez(data_file, **data_for_violin)
         print(f"Saved data: {data_file}")
 
-def plot_signal_violin_all(results, output_dir, signal_keys=["noise", "theta", "delta"]):
+def plot_index_avg_violin_WNR(means, output_dir, letters=('A', 'B', 'C'), show=False):
     """
-    Create violin plots for each signal (noise, theta, delta) across sleep states.
+        Create a single figure with W, N, R indices as horizontal subplots.
+        Each subplot shows violin plots of the index across sleep states
+        with mean ± SEM and jittered individual points.
+
+        Parameters
+        ----------
+        means : dict
+            Nested dictionary: means[state][index] = array-like values across subjects
+            States: 'Wake', 'N1', 'N2', 'N3', 'REM'
+            Indices: 'w', 'n', 'r'
+        output_dir : str
+            Directory to save the figure.
+        letters : tuple
+            Letters to label subplots for reference (A, B, C).
+        show : bool
+            Whether to display the plot interactively.
+        """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import os
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    states = ['Wake', 'N1', 'N2', 'N3', 'REM']
+    index_keys = ['w', 'n', 'r']
+    index_labels = ['W', 'N', 'R']
+    colors = ['royalblue', 'forestgreen', 'firebrick']
+
+    n_states = len(states)
+    fontsize_labels = 16
+    fontsize_title = 18
+    fontsize_ticks = 14
+
+    fig, axes = plt.subplots(1, 3, figsize=(20, 6), sharey=True)
+
+    for i, (idx, ax) in enumerate(zip(index_keys, axes)):
+        # Collect data per state
+        data_list = [means[state][idx] for state in states]
+
+        # --- Violin plot ---
+        parts = ax.violinplot(
+            data_list,
+            positions=np.arange(n_states),
+            showmeans=False,
+            showmedians=False,
+            showextrema=False,
+        )
+
+        # Color the violins
+        for pc, color in zip(parts['bodies'], [colors[i]] * n_states):
+            pc.set_facecolor(color)
+            pc.set_alpha(0.5)
+            pc.set_edgecolor('black')
+            pc.set_linewidth(1)
+
+        # Overlay jittered points + mean ± SEM
+        for j, vals in enumerate(data_list):
+            vals = np.array(vals)
+            if len(vals) == 0:
+                continue
+            mean_val = np.nanmean(vals)
+            sem_val = np.nanstd(vals) / np.sqrt(len(vals))
+
+            # Jittered points
+            x_jit = np.random.normal(loc=j, scale=0.08, size=len(vals))
+            ax.scatter(x_jit, vals, color=colors[i], alpha=0.5, s=12, zorder=1)
+
+            # Mean marker
+            ax.plot(j, mean_val, 'o', color='white', markeredgecolor='black', markersize=6, zorder=4)
+            # SEM
+            ax.errorbar(j, mean_val, yerr=sem_val, color='black',
+                        capsize=4, elinewidth=1.8, markeredgewidth=1.2, zorder=3)
+
+        # Labels and aesthetics
+        ax.set_xticks(np.arange(n_states))
+        ax.set_xticklabels(states, fontsize=fontsize_ticks)
+        ax.set_xlabel("Sleep State", fontsize=fontsize_labels)
+        if i == 0:
+            ax.set_ylabel(f"Index Value", fontsize=fontsize_labels)
+        ax.set_title(f"Index {index_labels[i]}", fontsize=fontsize_title)
+        ax.grid(axis='y', color='lightgray', linestyle='--', alpha=0.5, zorder=0)
+
+        # Subplot letter
+        ax.text(0.01, 0.95, letters[i], transform=ax.transAxes,
+                fontsize=22, fontweight='bold', va='top')
+
+        # Optional: set y-limits if indices are normalized between 0-1
+        ax.set_ylim(0, 1)
+
+    plt.tight_layout()
+    save_path = os.path.join(output_dir, "indices_violin_combined.svg")
+    plt.savefig(save_path, format='svg', dpi=300)
+    if show:
+        plt.show()
+    else:
+        plt.close()
+    print(f"Saved combined violin plot: {save_path}")
+
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+
+def plot_signal_violin_all_combined(results, output_dir,
+                                    signal_keys=["noise", "theta", "delta"],
+                                    letters=("A", "B", "C"),
+                                    show=False):
+    """
+    Create a single figure containing violin plots for multiple signals
+    (e.g., noise, theta, delta), with one subplot per signal.
 
     For each signal:
         - x-axis: Sleep states (Wake, N1, N2, N3, REM)
-        - y-axis: Values across all subjects/nights
-        - Overlays mean ± SEM markers and jittered individual points
-        - Saves plot as SVG and underlying data as NPZ
+        - y-axis: Values from all subjects/nights
+        - Jittered individual data points
+        - Mean ± SEM overlayed
+        - Saved as a combined SVG figure
+        - Underlying per-state values saved to NPZ (per signal)
 
     Parameters
     ----------
     results : dict
-        Nested dictionary of subjects -> nights -> signals -> per-state values
-        e.g., results[subject][night][signal][state] = value
+        Nested dictionary: results[subj][night][signal][state] = value
     output_dir : str
-        Directory to save plots and data.
-    signal_keys : list of str, optional
-        List of signal names to plot, default is ["noise", "theta", "delta"].
+        Directory where the figure and NPZ files will be saved.
+    signal_keys : list
+        List of signals to plot as subplots.
+    letters : tuple
+        Subplot labels (e.g., A, B, C).
+    show : bool
+        Whether to display the figure interactively.
     """
     os.makedirs(output_dir, exist_ok=True)
 
+    # States
     state_names = ["w", "n1", "n2", "n3", "r"]
     state_labels = ["Wake", "N1", "N2", "N3", "REM"]
+    n_states = len(state_names)
 
-    colors = {
+    # Colors per state (matching your original)
+    state_colors = {
         "w": "royalblue",
         "n1": "teal",
         "n2": "purple",
         "n3": "forestgreen",
         "r": "firebrick"
     }
-    palette = [colors[s] for s in state_names]
 
-    for key in signal_keys:
-        # Collect per-state data
+    # Matplotlib figure: one subplot per signal
+    n_signals = len(signal_keys)
+    fig, axes = plt.subplots(1, n_signals, figsize=(7*n_signals, 6), sharey=True)
+
+    if n_signals == 1:
+        axes = [axes]  # keep iterable
+
+    fontsize_labels = 16
+    fontsize_title = 18
+    fontsize_ticks = 14
+
+    # Loop over signals
+    for ax_i, (signal_key, ax) in enumerate(zip(signal_keys, axes)):
+
+        # ---- Collect per-state data ----
         data_for_violin = {sn: [] for sn in state_names}
 
         for subj, nights in results.items():
             for night, signal_dict in nights.items():
-                if key not in signal_dict:
+                if signal_key not in signal_dict:
                     continue
-                state_vals = signal_dict[key]
+                state_vals = signal_dict[signal_key]
                 for sn in state_names:
                     val = state_vals.get(sn, np.nan)
                     if not np.isnan(val):
                         data_for_violin[sn].append(val)
 
+        # convert to list-of-lists
         data_list = [data_for_violin[sn] for sn in state_names]
 
-        # --- Violin plot ---
-        plt.figure(figsize=(8, 6))
-        ax = sns.violinplot(
-            data=data_list,
-            palette=palette,
-            cut=0,
-            bw='scott',
-            inner=None,
-            alpha=0.5,
-            zorder=2
+        # ---- Create violin plot ----
+        parts = ax.violinplot(
+            data_list,
+            positions=np.arange(n_states),
+            showmeans=False,
+            showmedians=False,
+            showextrema=False
         )
 
-        # Scatter jitter
-        for i, d in enumerate(data_list):
-            x = np.random.normal(loc=i, scale=0.15, size=len(d))
-            ax.scatter(x, d, color=palette[i], alpha=0.5, marker='D', s=10, zorder=1)
+        # Color violins
+        for pc, sn in zip(parts['bodies'], state_names):
+            pc.set_facecolor(state_colors[sn])
+            pc.set_alpha(0.45)
+            pc.set_edgecolor("black")
+            pc.set_linewidth(1)
 
-        # Overlay mean ± SEM
-        for i, d in enumerate(data_list):
-            d = np.array(d)
-            if len(d) == 0:
+        # ---- Add jittered points & SEM ----
+        for j, vals in enumerate(data_list):
+            if len(vals) == 0:
                 continue
-            mean_val = np.nanmean(d)
-            sem_val = np.nanstd(d) / np.sqrt(len(d))
+            vals = np.array(vals)
 
-            plt.plot(i, mean_val, 'o', color='white', markeredgecolor='black', markersize=6, zorder=4)
-            plt.errorbar(i, mean_val, yerr=sem_val, color='black', capsize=4,
-                         elinewidth=1.5, markeredgewidth=1, zorder=3)
+            # Jitter
+            x_jitter = np.random.normal(j, 0.10, size=len(vals))
+            ax.scatter(x_jitter, vals, color=state_colors[state_names[j]],
+                       alpha=0.55, s=14, zorder=1)
 
-        # Labels and aesthetics
-        ax.set_xticks(range(len(state_labels)))
-        ax.set_xticklabels(state_labels)
-        ax.set_xlabel("Sleep State")
-        ax.set_ylabel(f"Average {key.capitalize()} Value")
-        ax.set_title(f"{key.capitalize()} per Sleep State (Mean ± SEM)")
-        plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
-        plt.tight_layout()
+            # Mean ± SEM
+            mean_val = np.nanmean(vals)
+            sem_val = np.nanstd(vals) / np.sqrt(len(vals))
 
-        # Save plot and data
-        plot_file = os.path.join(output_dir, f"{key}_violin_avg_sem.svg")
-        plt.savefig(plot_file, format="svg")
+            ax.plot(j, mean_val, 'o', color='white',
+                    markeredgecolor='black', markersize=6, zorder=4)
+            ax.errorbar(j, mean_val, yerr=sem_val, color='black',
+                        capsize=4, elinewidth=1.8, markeredgewidth=1.2, zorder=3)
+
+        # ---- Aesthetics ----
+        ax.set_xticks(np.arange(n_states))
+        ax.set_xticklabels(state_labels, fontsize=fontsize_ticks)
+        ax.set_xlabel("Sleep State", fontsize=fontsize_labels)
+        ax.set_title(signal_key.capitalize(), fontsize=fontsize_title)
+        ax.grid(axis="y", linestyle="--", color="lightgray", alpha=0.5)
+        ax.set_ylim(0,1)
+
+
+        # Save underlying data
+        np.savez(os.path.join(output_dir, f"{signal_key}_data.npz"),
+                 **data_for_violin)
+
+    axes[0].set_ylabel("Value", fontsize=fontsize_labels)
+
+    plt.tight_layout()
+    fig_path = os.path.join(output_dir, "signals_violin_combined.svg")
+    plt.savefig(fig_path, format="svg", dpi=300)
+
+    if show:
         plt.show()
-        print(f"Saved plot: {plot_file}")
+    else:
+        plt.close()
 
-        data_file = os.path.join(output_dir, f"{key}_data.npz")
-        np.savez(data_file, **data_for_violin)
-        print(f"Saved data: {data_file}")
+    print(f"Saved combined figure: {fig_path}")
+
 
 def aperiodic_violin_and_bar(aperiodic_fit_values, states, output_dir):
     """
