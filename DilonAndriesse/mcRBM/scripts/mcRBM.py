@@ -690,7 +690,6 @@ class mcRBM:
                 VF = VF * (1.0 / t10) * normVF  # normalize columns
                 
                 bias_cov -= (epsilonbc / self.batch_size) * bias_covinc
-            
                 bias_vis -= (epsilonbc / self.batch_size) * bias_visinc
 
                 if epoch > self.startFH:
@@ -818,8 +817,11 @@ class mcRBM:
         # uncomment if computing the energy in order to store its evolution throghout training
         # ~ savemat(self.refDir + '/' + "training_energy_" + str(self.num_fac) + "_cov" + str(self.num_hid_cov) + "_mean" + str(self.num_hid_mean), {'meanEnergy':meanEnergy,'meanEnergy_test':meanEnergy_test,'maxEnergy': maxEnergy, 'maxEnergy_test': maxEnergy_test, 'minEnergy': minEnergy, 'minEnergy_test': minEnergy_test, 'epoch':epoch})
         savemat(
-            "training_energy_" + str(self.num_fac) + "_cov" + str(self.num_hid_cov) + "_mean" + str(self.num_hid_mean),
-            {'meanEnergy': meanEnergy, 'maxEnergy': maxEnergy, 'minEnergy': minEnergy, 'epoch': epoch})
+            "training_energy_" + str(self.num_fac) + 
+            "_cov" + str(self.num_hid_cov) + 
+            "_mean" + str(self.num_hid_mean),
+            {'meanEnergy': meanEnergy, 'maxEnergy': maxEnergy, 'minEnergy': minEnergy, 'epoch': epoch} + 
+            ".mat")
 
         # Compute states if desired:
         # normalise data for covariance hidden:
