@@ -916,6 +916,82 @@ def aperiodic_fit(pfc_data, states, fs, raw_pfc, output_dir, epoch_length):
 
     return normalized_exponents, smoothed_exponents, states, repaired_exponents
 
+def complexity_vis(states, complexity_val, output_dir, tag, color):
+    complexity_val = smooth_epochs(complexity_val)
+    time_stamps = np.arange(len(complexity_val))
+    min_len = min(len(states), len(complexity_val))
+
+    # --- Desired display order (top → bottom) ---
+    display_order = ["Wake", "REM", "N1", "N2", "N3"]
+
+    # --- Sleep stage conversion: numeric or string ---
+    if np.issubdtype(np.array(states).dtype, np.integer):
+
+        # Your numeric codes probably map like 0..4 but not necessarily in REM position
+        # So we remap them to the display order
+        # First: detect unique numeric values in the order they appear
+        unique_vals = sorted(set(states))
+
+        # Assume your stages correspond to this list:
+        # (Wake, N1, N2, N3, REM) or some variation.
+        # We need to determine the numeric → name mapping:
+        default_stage_order = ["Wake", "N1", "N2", "N3", "REM"]
+
+        # Build numeric → canonical name mapping
+        numeric_to_name = {u: default_stage_order[i] for i, u in enumerate(unique_vals)}
+
+        # Now build canonical name → display index mapping
+        name_to_display_index = {name: i for i, name in enumerate(display_order)}
+
+        # Convert hypnogram to display indices
+        hypno_numeric = np.array([
+            name_to_display_index[numeric_to_name[int(s)]]
+            for s in states[:min_len]
+        ])
+
+        # Y-axis labels in the correct order
+        ordered_labels = display_order
+
+    else:
+        # String stages: map directly into display order
+        name_to_display_index = {name: i for i, name in enumerate(display_order)}
+        hypno_numeric = np.array([
+            name_to_display_index[str(s)]
+            for s in states[:min_len]
+        ])
+        ordered_labels = display_order
+
+    # --- Main plot ---
+    fig, ax = plt.subplots(figsize=(20, 4))
+    ax.plot(time_stamps[:min_len], complexity_val[:min_len],
+            linestyle='-', color=color, linewidth=2, label=tag)
+    ax.set_xlabel('Epoch', fontsize=20)
+    ax.set_ylabel(tag, fontsize=20)
+    ax.set_ylim(0, 1)
+    ax.grid(True)
+    ax.legend(loc='best')
+
+    # --- Hypnogram overlay ---
+    ax_h = ax.twinx()
+    ax_h.step(time_stamps[:min_len], hypno_numeric,
+              where='mid', color='black', linewidth=2, label='Hypnogram', alpha=0.5)
+
+    ax_h.set_yticks(range(len(ordered_labels)))
+    ax_h.set_yticklabels(ordered_labels)
+    ax_h.set_ylabel('Sleep Stage', fontsize=20)
+
+    # IMPORTANT: puts Wake at the top, N3 at the bottom
+    ax_h.invert_yaxis()
+
+    ax_h.legend(loc='upper right', fontsize=12)
+    enlarge_ticks(ax_h, factor=1.5)
+    enlarge_ticks(ax, factor=1.5)
+
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/{tag}.svg", format='svg')
+    plt.close()
+
+
 def raw_to_epochs(data, sf, epoch):
     """
     Convert raw continuous data into non-overlapping epochs.
@@ -1982,6 +2058,14 @@ def dfa_per_state(normalized_dfa, states, output_dir):
     # plt.show()
 
     return smoothed_dfa
+def enlarge_ticks(ax, factor=1.5):
+    """Scale tick label font sizes for x and y axes."""
+    for tick in ax.xaxis.get_major_ticks():
+        tick.label1.set_fontsize(tick.label1.get_fontsize() * factor)
+
+    for tick in ax.yaxis.get_major_ticks():
+        tick.label1.set_fontsize(tick.label1.get_fontsize() * factor)
+
 
 def dfa_violin_and_bar(normalized_dfa, states, output_dir):
     """
@@ -2012,9 +2096,12 @@ def dfa_violin_and_bar(normalized_dfa, states, output_dir):
     colors_list = ['royalblue', 'teal', 'purple', 'forestgreen', 'firebrick']
     labels = ['W', 'N1', 'N2', 'N3', 'REM']
 
-    # --- Bar plot with mean ± SEM ---
-    plt.figure(figsize=(7, 5))
-    plt.bar(
+    # ============================
+    # ======== BAR PLOT ==========
+    # ============================
+    fig, ax = plt.subplots(figsize=(7, 5))
+
+    ax.bar(
         summary['state'], summary['mean'],
         yerr=summary['sem'],
         capsize=5,
@@ -2023,26 +2110,38 @@ def dfa_violin_and_bar(normalized_dfa, states, output_dir):
         zorder=2,
         alpha=0.6
     )
-    plt.xticks(range(5), labels)
-    plt.ylim(-1.1, 1.1)
-    plt.xlabel('Sleep State')
-    plt.ylabel('Normalized mean DFA')
-    plt.title('DFA per Sleep State (bar + SEM)')
-    plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
+
+    ax.set_xticks(range(5))
+    ax.set_xticklabels(labels)
+
+    ax.set_ylim(-1.1, 1.1)
+
+    ax.set_xlabel('Sleep State', fontsize=20)
+    ax.set_ylabel('Normalized mean DFA', fontsize=20)
+    ax.set_title('DFA per Sleep State (bar + SEM)', fontsize=20)
+
+    ax.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
+
+    # Increase tick font size
+    enlarge_ticks(ax, factor=1.5)
+
     plt.tight_layout()
     plt.savefig(f"{output_dir}/DFA_bar.svg", format='svg')
     plt.close()
 
-    # --- Violin plot with jittered points and SEM overlay ---
+    # ============================
+    # ======== VIOLIN PLOT =======
+    # ============================
     colors_dict = {0: 'royalblue', 1: 'teal', 2: 'purple', 3: 'forestgreen', 4: 'firebrick'}
     all_states = list(range(5))
     df_plot = df.copy()
     df_plot['state'] = df_plot['state'].astype(int)
 
-    plt.figure(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(8, 6))
+
     palette = [colors_dict[s] for s in all_states]
 
-    ax = sns.violinplot(
+    sns.violinplot(
         x='state', y='dfa', data=df_plot,
         order=all_states,
         palette=palette,
@@ -2050,34 +2149,41 @@ def dfa_violin_and_bar(normalized_dfa, states, output_dir):
         bw='scott',
         inner=None,
         alpha=0.5,
-        zorder=2
+        zorder=2,
+        ax=ax
     )
 
-    # --- Overlay jittered individual data points per state ---
+    # --- Jittered points ---
     for i, s in enumerate(all_states):
         vals = df_plot.loc[df_plot['state'] == s, 'dfa'].values
         if len(vals) > 0:
             x = np.random.normal(loc=i, scale=0.15, size=len(vals))
             ax.scatter(x, vals, color=palette[i], alpha=0.5, marker='D', s=10, zorder=1)
 
-    # --- Overlay medians and SEM per state ---
+    # --- Medians + SEM ---
     for i, s in enumerate(all_states):
         vals = df_plot.loc[df_plot['state'] == s, 'dfa'].values
         if len(vals) == 0:
             continue
         median_val = np.nanmedian(vals)
         sem_val = np.nanstd(vals) / np.sqrt(len(vals))
-        plt.plot(i, median_val, 'o', color='white', markeredgecolor='black', markersize=6, zorder=10)
-        plt.errorbar(i, median_val, yerr=sem_val, color='black', capsize=4, elinewidth=1.5, markeredgewidth=1, zorder=9)
+        ax.plot(i, median_val, 'o', color='white', markeredgecolor='black', markersize=6, zorder=10)
+        ax.errorbar(i, median_val, yerr=sem_val, color='black', capsize=4,
+                    elinewidth=1.5, markeredgewidth=1, zorder=9)
 
-    # --- Final cosmetic adjustments ---
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels)
-    ax.set_xlabel('Sleep State')
-    ax.set_ylabel('Normalized mean DFA')
+
+    ax.set_xlabel('Sleep State', fontsize=20)
+    ax.set_ylabel('Normalized mean DFA', fontsize=20)
     ax.set_ylim(-1.1, 1.1)
-    ax.set_title('DFA per Sleep State (violin + SEM)')
-    plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
+    ax.set_title('DFA per Sleep State (violin + SEM)', fontsize=20)
+
+    ax.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
+
+    # Increase tick font size
+    enlarge_ticks(ax, factor=1.5)
+
     plt.tight_layout()
     plt.savefig(f"{output_dir}/DFA_violin.svg", format='svg')
     plt.close()

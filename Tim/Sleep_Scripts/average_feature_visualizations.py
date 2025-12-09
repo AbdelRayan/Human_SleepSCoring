@@ -9,6 +9,7 @@ from neurodsp.aperiodic import compute_irasa, fit_irasa, compute_fluctuations
 import seaborn as sns
 import EntropyHub as EH
 from scipy.stats import sem
+from sklearn.decomposition import PCA
 
 import Human_SleepSCoring.Tim.Sleep_Scripts.Cleaned_feature_vis as C
 
@@ -105,11 +106,11 @@ def plot_index_barplot(collected_means, output_dir):
     plt.figure(figsize=(10, 6))
     plt.rcParams.update({
         'font.size': 14,
-        'axes.labelsize': 16,
-        'axes.titlesize': 18,
-        'xtick.labelsize': 14,
-        'ytick.labelsize': 14,
-        'legend.fontsize': 14
+        'axes.labelsize': 24,
+        'axes.titlesize': 26,
+        'xtick.labelsize': 22,
+        'ytick.labelsize': 22,
+        'legend.fontsize': 18
     })
 
     x = np.arange(len(states))
@@ -186,7 +187,7 @@ def prepare_aperiodic_violin_data(valid_states, normalized_exponents):
     """
     labels = ['W', 'N1', 'N2', 'N3', 'REM']
     all_states = list(range(5))
-    df = pd.DataFrame({'state': valid_states, 'aperiodic': normalized_exponents})
+    df = pd.DataFrame({'state': valid_states, 'aperiodic': wei_normalizing(normalized_exponents)})
     data_for_violin = [df.loc[df['state'] == s, 'aperiodic'].values for s in all_states]
 
     counts = [len(d) for d in data_for_violin]
@@ -237,7 +238,7 @@ def prepare_dfa_violin_data(valid_states, fs, length, lfp_PFC):
     # Match lengths with valid states
     min_length = min(len(normalized_dfa), len(valid_states))
     valid_states = valid_states[:min_length]
-    normalized_dfa = normalized_dfa[:min_length]
+    normalized_dfa = wei_normalizing(normalized_dfa[:min_length])
     df = pd.DataFrame({'state': valid_states, 'dfa': normalized_dfa})
     data_for_violin = [df.loc[df['state'] == s, 'dfa'].values for s in all_states]
 
@@ -483,6 +484,48 @@ def plot_averaged_dfa_violin(dfa_violin, output_dir):
     plt.savefig(f"{output_dir}/dfa_violin_avg_sem.svg", format="svg")
     plt.show()
 
+def wei_normalizing(data):
+    """
+    Perform robust normalization of a 1D array based on 10th and 90th percentiles.
+
+    Parameters
+    ----------
+    data : array-like
+        Input data to normalize.
+
+    Returns
+    -------
+    normalized_data : np.ndarray
+        Normalized array scaled between 0.05 and 1. Values below the 10th percentile
+        are mapped to 0.05, and above the 90th percentile to 1.
+
+    Notes
+    -----
+    This normalization reduces the effect of extreme outliers by ignoring
+    values outside the 10th–90th percentile range.
+    """
+    data = np.array(data)
+
+    bottom = data[data <= np.nanpercentile(data, 10)]
+    top = data[data >= np.nanpercentile(data, 90)]
+
+    bottom_avg = np.average(bottom) if len(bottom) > 0 else 0
+    top_avg = np.average(top) if len(top) > 0 else 1
+
+    denom = top_avg - bottom_avg if top_avg != bottom_avg else 1
+    normalized_data = (data - bottom_avg) / denom
+    normalized_data = np.clip(normalized_data, 0.05, 1)
+
+    return normalized_data
+
+def enlarge_ticks(ax, factor=1.5):
+    """Scale tick label font sizes for x and y axes."""
+    for tick in ax.get_xticklabels():
+        tick.set_fontsize(tick.get_fontsize() * factor)
+    for tick in ax.get_yticklabels():
+        tick.set_fontsize(tick.get_fontsize() * factor)
+
+
 def plot_averaged_mse_violin(mse_violin, output_dir):
     """
     Plot a group-level violin plot of normalized MSE exponents per sleep stage,
@@ -523,69 +566,490 @@ def plot_averaged_mse_violin(mse_violin, output_dir):
         zorder=2
     )
 
+    # --- Overlay jittered points ---
     for i, d in enumerate(data_list):
         x = np.random.normal(loc=i, scale=0.15, size=len(d))
         ax.scatter(x, d, color=palette[i], alpha=0.5, marker='D', s=10, zorder=1)
 
+    # --- Overlay mean ± SEM ---
     for i, d in enumerate(data_list):
         d = np.array(d)
         d = d[~np.isnan(d)]
         if len(d) == 0:
             continue
-
         mean_val = np.nanmean(d)
         sem_val = np.nanstd(d) / np.sqrt(len(d))
-
         plt.plot(i, mean_val, 'o', color='white', markeredgecolor='black', markersize=6, zorder=4)
         plt.errorbar(i, mean_val, yerr=sem_val, color='black', capsize=4, elinewidth=1.5, markeredgewidth=1, zorder=3)
 
+    # --- Labels & ticks ---
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels)
-    ax.set_xlabel('Sleep State')
-    ax.set_ylabel('Normalized MSE exponent')
-    ax.set_title('MSE per Sleep State (Mean ± SEM)')
-    plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
-    plt.tight_layout()
+    ax.set_xlabel('Sleep State', fontsize=20)
+    ax.set_ylabel('Normalized MSE exponent', fontsize=20)
+    ax.set_title('MSE per Sleep State (Mean ± SEM)', fontsize=20)
 
+    # Grid
+    plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
+
+    # Enlarge ticks
+    enlarge_ticks(ax, factor=1.5)
+
+    plt.tight_layout()
     plt.savefig(f"{output_dir}/mse_violin_avg_sem.svg", format="svg")
     plt.show()
 
-def plot_index_avg_violin_all(results, output_dir):
+def plot_averaged_sleep_boxplots(aperiodic_violin, dfa_violin, mse_violin, output_dir):
     """
-    Create violin plots for each index across sleep states (W, N1, N2, N3, REM).
+    Plot group-level boxplots for Aperiodic, DFA, and MSE metrics
+    across sleep stages, with overlaid mean ± SEM.
+    Ensures true reordering: Wake, N1, N2, N3, REM.
+    """
 
-    For each index:
-        - x-axis: Sleep states (Wake, N1, N2, N3, REM)
-        - y-axis: Per-night averages from all subjects/nights
-        - Overlays mean ± SEM markers and jittered individual points
-        - Saves the plot as SVG and the underlying data as NPZ
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    import numpy as np
+
+    # Professional style
+    sns.set(style='whitegrid')
+    plt.rcParams.update({
+        'font.size': 14,
+        'axes.titlesize': 16,
+        'axes.labelsize': 14,
+        'figure.dpi': 300
+    })
+
+    # Correct color mapping
+    colors = {
+        'W'  : '#76B7B2',   # teal
+        'N1' : '#4E79A7',   # blue
+        'N2' : '#59A14F',   # green
+        'N3' : '#F28E2B',   # orange
+        'REM': '#E15759'    # red
+    }
+
+    # Desired plotting order
+    x_order_labels = ['W', 'N1', 'N2', 'N3', 'REM']
+
+    # Setup figure with 3 horizontal subplots
+    fig, axes = plt.subplots(1, 3, figsize=(20, 6), sharey=False)
+
+    plot_data = [
+        (aperiodic_violin, 'Normalized aperiodic exponent', 'Aperiodic Fit per Sleep State'),
+        (dfa_violin, 'Normalized DFA exponent', 'DFA per Sleep State'),
+        (mse_violin, 'Normalized MSE exponent', 'MSE per Sleep State')
+    ]
+
+    for ax, (data_dict, ylabel, title) in zip(axes, plot_data):
+        dfv = data_dict['data_for_violin']
+        labels = data_dict['labels']
+
+        # -----------------------
+        # DEBUG PRINT
+        # -----------------------
+        print("\n================ DEBUG ================")
+        print("Title:", title)
+        print("Labels (data_dict['labels']):", labels)
+        print("Type of data_for_violin:", type(dfv))
+        print("Length of data_for_violin:", len(dfv))
+        for i, arr in enumerate(dfv):
+            print(f"  Index {i}: label={labels[i]}, n={len(arr)}, preview={arr[:5]}")
+        print("=======================================\n")
+
+        # -----------------------
+        # Map label -> data and reorder
+        # -----------------------
+        dfv_map = {labels[i]: dfv[i] for i in range(len(labels))}
+        data_list = [dfv_map[label] for label in x_order_labels]
+        palette = [colors[label] for label in x_order_labels]
+
+        # -----------------------
+        # Boxplot
+        # -----------------------
+        bp = ax.boxplot(
+            data_list,
+            patch_artist=True,
+            widths=0.55,
+            showfliers=False,
+            medianprops=dict(color='black', linewidth=2),
+            boxprops=dict(linewidth=1.5),
+            whiskerprops=dict(color='black', linewidth=1.5),
+            capprops=dict(color='black', linewidth=1.5)
+        )
+
+        # Color boxes
+        for patch, c in zip(bp['boxes'], palette):
+            patch.set_facecolor(c)
+            patch.set_alpha(0.6)
+
+        # Overlay mean ± SEM
+        for i, d in enumerate(data_list):
+            d = np.array(d)
+            d = d[~np.isnan(d)]
+            if len(d) == 0:
+                continue
+            mean_val = np.mean(d)
+            sem_val = np.std(d)/np.sqrt(len(d))
+            x_pos = i + 1.08  # slight offset for visibility
+            ax.plot(x_pos, mean_val, 'o', color='white', markeredgecolor='black', markersize=10, zorder=4)
+            ax.errorbar(x_pos, mean_val, yerr=sem_val, color='black', capsize=6, elinewidth=2.5, zorder=3)
+
+        # Overlay jittered points
+        for i, d in enumerate(data_list):
+            x = np.random.normal(loc=i+1, scale=0.07, size=len(d))
+            ax.scatter(x, d, color='black', alpha=0.7, s=15, zorder=2, marker='D')
+
+        # Axis formatting
+        ax.set_xticks(range(1, len(x_order_labels)+1))
+        ax.set_xticklabels(x_order_labels, fontsize=22)
+        ax.set_xlabel('Sleep State', fontsize=24)
+        ax.set_ylabel(ylabel, fontsize=24)
+        ax.set_ylim(0,1)
+        ax.grid(axis='y', linestyle='--', color='gray', alpha=0.3, zorder=0)
+        ax.tick_params(axis='y', labelsize=22)
+        ax.set_axisbelow(True)
+
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/sleep_boxplots_reordered_correctcolors.svg", format="svg")
+    plt.show()
+
+def plot_subject_pca(loaded_dicts, output_dir):
+    """
+    Generate PCA plots:
+        - Per subject/night
+        - Global PCA across all subjects
+
+    Features used:
+        - index_vals (all keys)
+        - aperiodic_fit
+        - dfa
+        - mse
+        - noise
+        - theta
+        - delta
+
+    Points colored by sleep state.
 
     Parameters
     ----------
-    results : dict
-        Nested dictionary of subjects -> nights -> indices -> per-state values
-        e.g., results[subject][night][index][state] = value
+    loaded_dicts : list of dict
+        Each dict contains features and epoch-level data for a subject/night.
     output_dir : str
-        Directory to save plots and data.
+        Directory to save PCA plots.
     """
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from sklearn.decomposition import PCA
+    import seaborn as sns
+
+    os.makedirs(output_dir, exist_ok=True)
+    sns.set(style='whitegrid')
+
+    # ------------------------
+    # State colors
+    # ------------------------
+    state_colors = {
+        0: '#76B7B2',  # W → teal
+        1: '#4E79A7',  # N1 → blue
+        2: '#59A14F',  # N2 → green
+        3: '#F28E2B',  # N3 → orange
+        4: '#E15759'   # REM → red
+    }
+    state_labels = ['W', 'N1', 'N2', 'N3', 'REM']
+
+    # ------------------------
+    # Store global data
+    # ------------------------
+    all_X = []
+    all_states = []
+
+    # ------------------------
+    # PCA per subject
+    # ------------------------
+    for subj_dict in loaded_dicts:
+        subject = subj_dict['subject']
+        night = subj_dict['night']
+
+        # Collect features per epoch
+        feature_list = []
+
+        # index_vals
+        for key, arr in subj_dict['index_vals'].items():
+            feature_list.append(np.array(arr).flatten())
+
+        # Other features
+        for feat_key in ['aperiodic_fit', 'dfa', 'mse', 'noise', 'theta', 'delta']:
+            feature_list.append(np.array(subj_dict[feat_key]).flatten())
+
+        # Stack features: shape (n_epochs, n_features)
+        X = np.column_stack(feature_list)
+        states = subj_dict["dfa_violin"]["df_plot"].iloc[:,0].to_numpy()
+
+        # Add to global
+        all_X.append(X)
+        all_states.append(states)
+
+        # Run PCA
+        pca = PCA(n_components=2)
+        X_pca = pca.fit_transform(X)
+
+        # Plot PCA per subject
+        plt.figure(figsize=(8,6))
+        for state in np.unique(states):
+            mask = states == state
+            plt.scatter(
+                X_pca[mask,0], X_pca[mask,1],
+                color=state_colors[state],
+                alpha=0.7,
+                s=25,
+                label=state_labels[state]
+            )
+        plt.xlabel(f"PC1 ({pca.explained_variance_ratio_[0]*100:.1f}%)", fontsize=24)
+        plt.ylabel(f"PC2 ({pca.explained_variance_ratio_[1]*100:.1f}%)", fontsize=24)
+        plt.legend(title="Sleep State", fontsize=18)
+        plt.grid(alpha=0.3)
+        plt.tick_params(axis='x', labelsize=22)
+        plt.tick_params(axis='y', labelsize=22)
+        plt.tight_layout()
+
+        out_path = os.path.join(output_dir, 'PCA', f"PCA_Subject{subject}_Night{night}.svg")
+        plt.savefig(out_path, format="svg", dpi=300)
+        plt.close()
+        print(f"Saved PCA plot: {out_path}")
+
+    # ------------------------
+    # Global PCA across all subjects
+    # ------------------------
+    all_X_combined = np.vstack(all_X)
+    all_states_combined = np.concatenate(all_states)
+
+    pca_global = PCA(n_components=2)
+    X_global_pca = pca_global.fit_transform(all_X_combined)
+
+    plt.figure(figsize=(10,8))
+    for state in np.unique(all_states_combined):
+        mask = all_states_combined == state
+        plt.scatter(
+            X_global_pca[mask,0], X_global_pca[mask,1],
+            color=state_colors[state],
+            alpha=0.5,
+            s=20,
+            label=state_labels[state]
+        )
+    plt.xlabel(f"PC1 ({pca_global.explained_variance_ratio_[0]*100:.1f}%)", fontsize=24)
+    plt.ylabel(f"PC2 ({pca_global.explained_variance_ratio_[1]*100:.1f}%)", fontsize=24)
+    plt.tick_params(axis='x', labelsize=22)
+    plt.tick_params(axis='y', labelsize=22)
+    plt.legend(title="Sleep State", fontsize=18)
+    plt.ylim(-2, 2)
+    plt.xlim(-2, 2)
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+
+    out_path_global = os.path.join(output_dir, 'PCA', "PCA_Global_AllSubjects.svg")
+    plt.savefig(out_path_global, format="svg", dpi=300)
+    plt.close()
+    print(f"Saved global PCA plot: {out_path_global}")
+
+def plot_subject_pca_rodent(loaded_dicts, output_dir):
+    """
+    Generate PCA plots:
+        - Per subject/night
+        - Global PCA across all subjects
+
+    Features used:
+        - index_vals (all keys)
+        - aperiodic_fit
+        - dfa
+        - mse
+        - noise
+        - theta
+        - delta
+
+    Points colored by sleep state.
+
+    Parameters
+    ----------
+    loaded_dicts : list of dict
+        Each dict contains features and epoch-level data for a subject/night.
+    output_dir : str
+        Directory to save PCA plots.
+    """
+
+
+    os.makedirs(output_dir, exist_ok=True)
+    sns.set(style='whitegrid')
+
+    # ------------------------
+    # State colors
+    # ------------------------
+    state_colors = {
+        0: '#76B7B2',  # W → teal
+        1: '#4E79A7',  # N1 → blue
+        2: '#59A14F',  # N2 → green
+        3: '#F28E2B',  # N3 → orange
+        4: '#E15759'   # REM → red
+    }
+    state_labels = ['W', 'N1', 'N2', 'N3', 'REM']
+
+    # ------------------------
+    # Store global data
+    # ------------------------
+    all_X = []
+    all_states = []
+
+    # ------------------------
+    # PCA per subject
+    # ------------------------
+    for subj_dict in loaded_dicts:
+        subject = subj_dict['subject']
+        night = subj_dict['night']
+
+        # Collect features per epoch
+        feature_list = []
+
+        # index_vals
+        for key, arr in subj_dict['index_vals'].items():
+            feature_list.append(np.array(arr).flatten())
+
+        # Other features
+        for feat_key in ['noise', 'theta', 'delta']:
+            feature_list.append(np.array(subj_dict[feat_key]).flatten())
+
+        # Stack features: shape (n_epochs, n_features)
+        X = np.column_stack(feature_list)
+        states = subj_dict['states']
+
+        # Add to global
+        all_X.append(X)
+        all_states.append(states)
+
+        # Run PCA
+        pca = PCA(n_components=2)
+        X_pca = pca.fit_transform(X)
+
+        # Plot PCA per subject
+        plt.figure(figsize=(8,6))
+        for state in np.unique(states):
+            mask = states == state
+            plt.scatter(
+                X_pca[mask,0], X_pca[mask,1],
+                color=state_colors[state],
+                alpha=0.7,
+                s=25,
+                label=state_labels[state]
+            )
+        plt.xlabel(f"PC1 ({pca.explained_variance_ratio_[0]*100:.1f}%)", fontsize=24)
+        plt.ylabel(f"PC2 ({pca.explained_variance_ratio_[1]*100:.1f}%)", fontsize=24)
+        plt.tick_params(axis='x', labelsize=22)
+        plt.tick_params(axis='y', labelsize=22)
+
+        plt.legend(title="Sleep State", fontsize=18)
+        plt.grid(alpha=0.3)
+        plt.ylim(-1.5, 1.5)
+        plt.xlim(-1.5, 1.5)
+        plt.tight_layout()
+
+        out_path = os.path.join(output_dir, 'PCA', f"PCA_Subject{subject}_Night{night}.svg")
+        plt.savefig(out_path, format="svg", dpi=300)
+        plt.close()
+        print(f"Saved PCA plot: {out_path}")
+
+    # ------------------------
+    # Global PCA across all subjects
+    # ------------------------
+    all_X_combined = np.vstack(all_X)
+    all_states_combined = np.concatenate(all_states)
+
+    pca_global = PCA(n_components=2)
+    X_global_pca = pca_global.fit_transform(all_X_combined)
+
+    plt.figure(figsize=(10,8))
+    for state in np.unique(all_states_combined):
+        mask = all_states_combined == state
+        plt.scatter(
+            X_global_pca[mask,0], X_global_pca[mask,1],
+            color=state_colors[state],
+            alpha=0.5,
+            s=20,
+            label=state_labels[state]
+        )
+    plt.xlabel(f"PC1 ({pca_global.explained_variance_ratio_[0]*100:.1f}%)", fontsize=24)
+    plt.ylabel(f"PC2 ({pca_global.explained_variance_ratio_[1]*100:.1f}%)", fontsize=24)
+    plt.tick_params(axis='x', labelsize=22)
+    plt.tick_params(axis='y', labelsize=22)
+    plt.legend(title="Sleep State", fontsize=18)
+    plt.grid(alpha=0.3)
+    plt.ylim(-2, 2)
+    plt.xlim(-2, 2)
+    plt.tight_layout()
+
+    out_path_global = os.path.join(output_dir, 'PCA', "PCA_Global_AllSubjects.svg")
+    plt.savefig(out_path_global, format="svg", dpi=300)
+    plt.close()
+    print(f"Saved global PCA plot: {out_path_global}")
+
+def plot_index_avg_boxplot_combined(results, output_dir,
+                                    index_keys_to_plot=["W", "N", "R"]):
+    """
+    Create a single figure containing professional-quality boxplots
+    for selected indices across sleep states (W, N1, N2, N3, REM).
+
+    Matching style of: plot_averaged_sleep_boxplots()
+
+    - One subplot per index (e.g., W, N, R)
+    - Jittered points
+    - Mean ± SEM overlay
+    - Publication-ready styling
+    """
+
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
     os.makedirs(output_dir, exist_ok=True)
 
-    index_keys = ["W", "N", "R", "1", "2", "3", "4"]
+    # -----------------------------
+    # Professional styling settings
+    # -----------------------------
+    sns.set(style='whitegrid')
+    plt.rcParams.update({
+        'font.size': 14,
+        'axes.titlesize': 18,
+        'axes.labelsize': 18,
+        'xtick.labelsize': 16,
+        'ytick.labelsize': 16,
+        'figure.dpi': 300
+    })
+
+    # Sleep states
     state_names = ["w", "n1", "n2", "n3", "r"]
-    state_labels = ["Wake", "N1", "N2", "N3", "REM"]
+    state_labels = ["W", "N1", "N2", "N3", "REM"]
 
-    colors = {
-        "w": "royalblue",
-        "n1": "teal",
-        "n2": "purple",
-        "n3": "forestgreen",
-        "r": "firebrick"
+    # Updated color palette (match plot_averaged_sleep_boxplots)
+    state_colors = {
+        "w": "#76B7B2",    # teal
+        "n1": "#4E79A7",   # blue
+        "n2": "#59A14F",   # green
+        "n3": "#F28E2B",   # orange
+        "r": "#E15759"     # red
     }
-    palette = [colors[s] for s in state_names]
+    palette = [state_colors[s] for s in state_names]
 
-    for idx in index_keys:
-        # Collect per-state data across subjects/nights
-        data_for_violin = {sn: [] for sn in state_names}
+    n_plots = len(index_keys_to_plot)
+    fig, axes = plt.subplots(1, n_plots, figsize=(7*n_plots, 7), sharey=True)
+    if n_plots == 1:
+        axes = [axes]
+
+    # -----------------------------
+    # Loop over selected indices
+    # -----------------------------
+    for ax, idx in zip(axes, index_keys_to_plot):
+
+        # Collect per-state data
+        data_for_box = {sn: [] for sn in state_names}
 
         for subj, nights in results.items():
             for night, idx_dict in nights.items():
@@ -593,59 +1057,77 @@ def plot_index_avg_violin_all(results, output_dir):
                     continue
                 state_vals = idx_dict[idx]
                 for sn in state_names:
-                    val = state_vals.get(sn, np.nan)
-                    if not np.isnan(val):
-                        data_for_violin[sn].append(val)
+                    v = state_vals.get(sn, np.nan)
+                    if not np.isnan(v):
+                        data_for_box[sn].append(v)
 
-        data_list = [data_for_violin[sn] for sn in state_names]
+        data_list = [data_for_box[sn] for sn in state_names]
 
-        # --- Violin plot ---
-        plt.figure(figsize=(8, 6))
-        ax = sns.violinplot(
-            data=data_list,
-            palette=palette,
-            cut=0,
-            bw='scott',
-            inner=None,
-            alpha=0.5,
-            zorder=2
+        # ---------------------------------
+        # Boxplot (professional style)
+        # ---------------------------------
+        bp = ax.boxplot(
+            data_list,
+            patch_artist=True,
+            widths=0.55,
+            showfliers=False,
+            medianprops=dict(color='black', linewidth=2),
+            boxprops=dict(linewidth=1.6),
+            whiskerprops=dict(color='black', linewidth=1.6),
+            capprops=dict(color='black', linewidth=1.6)
         )
 
-        # Overlay jittered points
-        for i, d in enumerate(data_list):
-            x = np.random.normal(loc=i, scale=0.15, size=len(d))
-            ax.scatter(x, d, color=palette[i], alpha=0.5, marker='D', s=10, zorder=1)
+        # Fill boxes with updated palette
+        for patch, col in zip(bp["boxes"], palette):
+            patch.set_facecolor(col)
+            patch.set_alpha(0.6)
 
-        # Overlay mean ± SEM
-        for i, d in enumerate(data_list):
-            d = np.array(d)
-            if len(d) == 0:
+        # ---------------------------------
+        # Jittered points + Mean ± SEM
+        # ---------------------------------
+        for i, vals in enumerate(data_list):
+            vals = np.array(vals)
+            if len(vals) == 0:
                 continue
-            mean_val = np.nanmean(d)
-            sem_val = np.nanstd(d) / np.sqrt(len(d))
 
-            plt.plot(i, mean_val, 'o', color='white', markeredgecolor='black', markersize=6, zorder=4)
-            plt.errorbar(i, mean_val, yerr=sem_val, color='black',
-                         capsize=4, elinewidth=1.5, markeredgewidth=1, zorder=3)
+            # Jitter
+            jitter = np.random.normal(i + 1, 0.07, len(vals))
+            ax.scatter(jitter, vals, color='black', s=20,
+                       alpha=0.7, marker='D', zorder=2)
 
-        # Labels and aesthetics
-        ax.set_xticks(range(len(state_labels)))
-        ax.set_xticklabels(state_labels)
-        ax.set_xlabel("Sleep State")
-        ax.set_ylabel(f"Average Value of Index {idx}")
-        ax.set_title(f"Index {idx} per Sleep State (Mean ± SEM)")
-        plt.grid(axis='y', color='lightgray', linestyle='--', alpha=0.6, zorder=0)
-        plt.tight_layout()
+            # Mean ± SEM
+            m = np.mean(vals)
+            s = np.std(vals) / np.sqrt(len(vals))
+            x_pos = i + 1.08
+            ax.plot(x_pos, m, 'o', color='white',
+                    markeredgecolor='black', markersize=10, zorder=4)
+            ax.errorbar(x_pos, m, yerr=s, color='black',
+                        capsize=6, elinewidth=2.5, zorder=3)
 
-        # Save plot and data
-        plot_file = os.path.join(output_dir, f"index_{idx}_violin_avg_sem.svg")
-        plt.savefig(plot_file, format="svg")
-        plt.show()
-        print(f"Saved plot: {plot_file}")
+        # Aesthetics
+        ax.set_xticks(range(1, len(state_labels)+1))
+        ax.set_xticklabels(state_labels, fontsize=22)
+        ax.tick_params(axis='y', labelsize=22)
+        ax.set_xlabel("Sleep State", fontsize=24)
+        ax.set_title(f"Index {idx}", fontsize=26)
+        ax.grid(axis='y', linestyle='--', color='gray', alpha=0.35)
+        ax.set_axisbelow(True)
+        ax.set_ylim(0,1)
 
-        data_file = os.path.join(output_dir, f"index_{idx}_data.npz")
-        np.savez(data_file, **data_for_violin)
-        print(f"Saved data: {data_file}")
+        # Save per-index NPZ
+        np.savez(os.path.join(output_dir, f"index_{idx}_data.npz"),
+                 **data_for_box)
+
+    axes[0].set_ylabel("Value", fontsize=24)
+
+    # Final layout + save
+    plt.tight_layout()
+    out_path = os.path.join(output_dir, "index_avg_boxplots_combined.svg")
+    plt.savefig(out_path, format="svg")
+    plt.show()
+
+    print(f"Saved combined figure: {out_path}")
+
 
 def plot_index_avg_violin_WNR(means, output_dir, letters=('A', 'B', 'C'), show=False):
     """
@@ -751,21 +1233,20 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-def plot_signal_violin_all_combined(results, output_dir,
-                                    signal_keys=["noise", "theta", "delta"],
-                                    letters=("A", "B", "C"),
-                                    show=False):
+def plot_signal_boxplot_all_combined(results, output_dir,
+                                     signal_keys=["noise", "theta", "delta"],
+                                     letters=("A", "B", "C"),
+                                     show=False):
     """
-    Create a single figure containing violin plots for multiple signals
+    Create a single figure containing boxplots for multiple signals
     (e.g., noise, theta, delta), with one subplot per signal.
 
-    For each signal:
-        - x-axis: Sleep states (Wake, N1, N2, N3, REM)
-        - y-axis: Values from all subjects/nights
-        - Jittered individual data points
-        - Mean ± SEM overlayed
-        - Saved as a combined SVG figure
-        - Underlying per-state values saved to NPZ (per signal)
+    Styles match `plot_averaged_sleep_boxplots`:
+        - Reordered states: Wake, N1, N2, N3, REM
+        - Custom colors per state
+        - Overlay mean ± SEM
+        - Jittered individual points
+        - Publication-ready sizing and fonts
 
     Parameters
     ----------
@@ -780,105 +1261,118 @@ def plot_signal_violin_all_combined(results, output_dir,
     show : bool
         Whether to display the figure interactively.
     """
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
     os.makedirs(output_dir, exist_ok=True)
 
-    # States
-    state_names = ["w", "n1", "n2", "n3", "r"]
-    state_labels = ["Wake", "N1", "N2", "N3", "REM"]
-    n_states = len(state_names)
+    sns.set(style='whitegrid')
+    plt.rcParams.update({
+        'font.size': 14,
+        'axes.titlesize': 16,
+        'axes.labelsize': 14,
+        'figure.dpi': 300
+    })
 
-    # Colors per state (matching your original)
+    # -----------------------
+    # Sleep state order & colors
+    # -----------------------
+    state_map = {"w": "W", "n1": "N1", "n2": "N2", "n3": "N3", "r": "REM"}
+    x_order_labels = ["W", "N1", "N2", "N3", "REM"]
     state_colors = {
-        "w": "royalblue",
-        "n1": "teal",
-        "n2": "purple",
-        "n3": "forestgreen",
-        "r": "firebrick"
+        "W": "#76B7B2",    # teal
+        "N1": "#4E79A7",   # blue
+        "N2": "#59A14F",   # green
+        "N3": "#F28E2B",   # orange
+        "REM": "#E15759"   # red
     }
 
-    # Matplotlib figure: one subplot per signal
     n_signals = len(signal_keys)
     fig, axes = plt.subplots(1, n_signals, figsize=(7*n_signals, 6), sharey=True)
-
     if n_signals == 1:
-        axes = [axes]  # keep iterable
+        axes = [axes]
 
-    fontsize_labels = 16
-    fontsize_title = 18
-    fontsize_ticks = 14
+    # -----------------------
+    # Fonts
+    # -----------------------
+    fontsize_labels = 24
+    fontsize_title = 26
+    fontsize_ticks = 22
 
-    # Loop over signals
     for ax_i, (signal_key, ax) in enumerate(zip(signal_keys, axes)):
 
         # ---- Collect per-state data ----
-        data_for_violin = {sn: [] for sn in state_names}
+        data_for_boxplot = {lbl: [] for lbl in x_order_labels}
 
         for subj, nights in results.items():
             for night, signal_dict in nights.items():
                 if signal_key not in signal_dict:
                     continue
                 state_vals = signal_dict[signal_key]
-                for sn in state_names:
-                    val = state_vals.get(sn, np.nan)
-                    if not np.isnan(val):
-                        data_for_violin[sn].append(val)
+                for sn, val in state_vals.items():
+                    if val is None or np.isnan(val):
+                        continue
+                    std_label = state_map.get(sn.lower())
+                    if std_label is not None:
+                        data_for_boxplot[std_label].append(val)
 
-        # convert to list-of-lists
-        data_list = [data_for_violin[sn] for sn in state_names]
+        # Convert to list-of-lists
+        data_list = [data_for_boxplot[label] for label in x_order_labels]
+        palette = [state_colors[label] for label in x_order_labels]
 
-        # ---- Create violin plot ----
-        parts = ax.violinplot(
+        # ---- Boxplot ----
+        bp = ax.boxplot(
             data_list,
-            positions=np.arange(n_states),
-            showmeans=False,
-            showmedians=False,
-            showextrema=False
+            patch_artist=True,
+            widths=0.55,
+            showfliers=False,
+            medianprops=dict(color='black', linewidth=2),
+            boxprops=dict(linewidth=1.5),
+            whiskerprops=dict(color='black', linewidth=1.5),
+            capprops=dict(color='black', linewidth=1.5)
         )
 
-        # Color violins
-        for pc, sn in zip(parts['bodies'], state_names):
-            pc.set_facecolor(state_colors[sn])
-            pc.set_alpha(0.45)
-            pc.set_edgecolor("black")
-            pc.set_linewidth(1)
+        # Color boxes
+        for patch, c in zip(bp['boxes'], palette):
+            patch.set_facecolor(c)
+            patch.set_alpha(0.6)
 
-        # ---- Add jittered points & SEM ----
-        for j, vals in enumerate(data_list):
+        # ---- Overlay mean ± SEM and jittered points ----
+        for i, vals in enumerate(data_list):
+            vals = np.array(vals)
             if len(vals) == 0:
                 continue
-            vals = np.array(vals)
 
-            # Jitter
-            x_jitter = np.random.normal(j, 0.10, size=len(vals))
-            ax.scatter(x_jitter, vals, color=state_colors[state_names[j]],
-                       alpha=0.55, s=14, zorder=1)
+            # Jittered individual points
+            x_jitter = np.random.normal(i + 1, 0.07, size=len(vals))
+            ax.scatter(x_jitter, vals, color='black', alpha=0.7, s=15, zorder=2, marker='D')
 
             # Mean ± SEM
-            mean_val = np.nanmean(vals)
-            sem_val = np.nanstd(vals) / np.sqrt(len(vals))
+            mean_val = np.mean(vals)
+            sem_val = np.std(vals)/np.sqrt(len(vals))
+            x_pos = i + 1.08
+            ax.plot(x_pos, mean_val, 'o', color='white', markeredgecolor='black', markersize=10, zorder=4)
+            ax.errorbar(x_pos, mean_val, yerr=sem_val, color='black', capsize=6, elinewidth=2.5, zorder=3)
 
-            ax.plot(j, mean_val, 'o', color='white',
-                    markeredgecolor='black', markersize=6, zorder=4)
-            ax.errorbar(j, mean_val, yerr=sem_val, color='black',
-                        capsize=4, elinewidth=1.8, markeredgewidth=1.2, zorder=3)
-
-        # ---- Aesthetics ----
-        ax.set_xticks(np.arange(n_states))
-        ax.set_xticklabels(state_labels, fontsize=fontsize_ticks)
+        # ---- Axis formatting ----
+        ax.set_xticks(range(1, len(x_order_labels)+1))
+        ax.set_xticklabels(x_order_labels, fontsize=fontsize_ticks)
         ax.set_xlabel("Sleep State", fontsize=fontsize_labels)
         ax.set_title(signal_key.capitalize(), fontsize=fontsize_title)
-        ax.grid(axis="y", linestyle="--", color="lightgray", alpha=0.5)
-        ax.set_ylim(0,1)
-
+        ax.tick_params(axis='y', labelsize=22)
+        ax.grid(axis="y", linestyle="--", color="gray", alpha=0.3)
+        ax.set_axisbelow(True)
+        ax.set_ylim(0, 1)
 
         # Save underlying data
-        np.savez(os.path.join(output_dir, f"{signal_key}_data.npz"),
-                 **data_for_violin)
+        np.savez(os.path.join(output_dir, f"{signal_key}_data.npz"), **data_for_boxplot)
 
     axes[0].set_ylabel("Value", fontsize=fontsize_labels)
 
     plt.tight_layout()
-    fig_path = os.path.join(output_dir, "signals_violin_combined.svg")
+    fig_path = os.path.join(output_dir, "signals_boxplot_combined.svg")
     plt.savefig(fig_path, format="svg", dpi=300)
 
     if show:
@@ -1056,7 +1550,7 @@ def prepare_mse_violin_data(valid_states, fs, length, lfp_PFC):
     # Ensure alignment with valid_states
     min_length = min(len(normalized_mse), len(valid_states))
     valid_states = valid_states[:min_length]
-    normalized_mse = normalized_mse[:min_length]
+    normalized_mse = wei_normalizing(normalized_mse[:min_length])
 
     # Build DataFrame
     df = pd.DataFrame({'state': valid_states, 'mse': normalized_mse})
