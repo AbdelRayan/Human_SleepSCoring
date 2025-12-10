@@ -965,11 +965,13 @@ def complexity_vis(states, complexity_val, output_dir, tag, color):
     fig, ax = plt.subplots(figsize=(20, 4))
     ax.plot(time_stamps[:min_len], complexity_val[:min_len],
             linestyle='-', color=color, linewidth=2, label=tag)
-    ax.set_xlabel('Epoch', fontsize=20)
-    ax.set_ylabel(tag, fontsize=20)
+    ax.set_xlabel('Epoch', fontsize=26)
+    ax.set_ylabel(tag, fontsize=26)
     ax.set_ylim(0, 1)
     ax.grid(True)
-    ax.legend(loc='best')
+    ax.legend(loc='best', fontsize=18)
+    ax.tick_params(axis='both',labelsize=24)
+
 
     # --- Hypnogram overlay ---
     ax_h = ax.twinx()
@@ -978,14 +980,13 @@ def complexity_vis(states, complexity_val, output_dir, tag, color):
 
     ax_h.set_yticks(range(len(ordered_labels)))
     ax_h.set_yticklabels(ordered_labels)
-    ax_h.set_ylabel('Sleep Stage', fontsize=20)
+    ax_h.set_ylabel('Sleep Stage', fontsize=26)
 
     # IMPORTANT: puts Wake at the top, N3 at the bottom
     ax_h.invert_yaxis()
 
-    ax_h.legend(loc='upper right', fontsize=12)
-    enlarge_ticks(ax_h, factor=1.5)
-    enlarge_ticks(ax, factor=1.5)
+    ax_h.legend(loc='upper right', fontsize=18)
+    ax_h.tick_params(axis='both',labelsize=24)
 
     plt.tight_layout()
     plt.savefig(f"{output_dir}/{tag}.svg", format='svg')
@@ -1710,7 +1711,7 @@ def index_N(delta, alpha, EMG, EOG1, EOG2, epoch_length, fs, gamma):
         np.ones(5) / 5, mode='same'
     )
 
-    alt_index_n = np.array([(eog_features[i] * delta[i]) / (gamma[i]**2) for i in range(len(delta))])
+    alt_index_n = np.array([(eog_features[i] * delta[i]) / (max(gamma[i], 1e-6)) for i in range(len(delta))])
     return alt_index_n
 
 def index_R(delta, sigma, EMG, EOG1, EOG2, epoch_length, fs):
