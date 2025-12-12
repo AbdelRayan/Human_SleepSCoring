@@ -4,7 +4,7 @@ import numpy as np
 import h5py
 import matplotlib.pyplot as plt
 
-file = 'D:/EEG_Data_stage/datasets/intra_cranial_dataset.h5'
+file = 'D:/EEG_Data_stage/datasets/training_features.npz'
 output = 'D:/EEG_Data_stage/datasets/'
 
 features = {"W Index":np.array([]),"R Index":np.array([]),"N Index":np.array([]),"1 Index":np.array([]),
@@ -12,22 +12,17 @@ features = {"W Index":np.array([]),"R Index":np.array([]),"N Index":np.array([])
             ,"4 Index":np.array([]),"Noise":np.array([]),"Theta":np.array([]),"Delta":np.array([])
             ,"Aperiodic Fit":np.array([]),"DFA":np.array([]),"MSE":np.array([])}
 
-with h5py.File(file, "r") as f:
-    # Loop over nights
-    for group_name in f.keys():
-        group = f[group_name]
-        print("Group:", group_name)
 
-        # Check dataset exists inside the group
-        if "Features" not in group:
-            print("  NO 'Features' dataset found in", group_name)
-            continue
+data = np.load(file, allow_pickle=True)
+print(len(data['d']))
+print(data['d'])
 
-        raw_features = group["Features"][:]  # <--- FIXED PATH
+# Access the features array
+raw_features = data['d']  # shape: (num_samples, num_features)
 
-        # Assign each column
-        for key, col_idx in zip(features.keys(), range(raw_features.shape[1])):
-            features[key] = np.append(features[key], raw_features[:, col_idx])
+# Append each column to your features dict
+for key, col_idx in zip(features.keys(), range(raw_features.shape[1])):
+    features[key] = np.append(features[key], raw_features[:, col_idx])
 
 static_colors = {
     "W Index":        "#1f77b4",  # blue
@@ -69,7 +64,7 @@ for j in range(len(features), len(axes)):
     axes[j].axis("off")
 
 plt.tight_layout()
-plt.savefig(output + "feature_histograms.pdf")
+plt.savefig(output + "feature_histograms_training.svg")
 plt.close()
 
 
