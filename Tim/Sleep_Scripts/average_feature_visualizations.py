@@ -10,6 +10,12 @@ import seaborn as sns
 import EntropyHub as EH
 from scipy.stats import sem
 from sklearn.decomposition import PCA
+import numpy as np
+import pandas as pd
+from scipy.stats import f_oneway, friedmanchisquare, shapiro, wilcoxon
+
+from statsmodels.stats.multitest import multipletests
+from itertools import combinations
 
 import Human_SleepSCoring.Tim.Sleep_Scripts.Cleaned_feature_vis as C
 
@@ -30,6 +36,145 @@ def suppress_stdout():
             yield
         finally:
             sys.stdout = old_stdout
+
+
+def prepare_data_for_2way_anova(collected_means):
+    """
+    Convert collected_means into long-form DataFrame suitable for repeated-measures two-way ANOVA.
+
+    Parameters
+    ----------
+    collected_means : dict
+        Structure: collected_means[state][index] = list of subject values
+
+    Returns
+    -------
+    df_long : pd.DataFrame
+        Columns: 'subject', 'stage', 'index_type', 'value'
+    """
+    states = ['Wake', 'N1', 'N2', 'N3', 'REM']
+    indices = ['w', 'r', 'n']
+
+    # Determine number of subjects (assumes same number per state/index)
+    n_subjects = min(len(collected_means[state][idx]) for state in states for idx in indices)
+
+    data = []
+    for subj in range(n_subjects):
+        for idx in indices:
+            for state in states:
+                value = collected_means[state][idx][subj]
+                data.append({
+                    'subject': subj,
+                    'stage': state,
+                    'index_type': idx.upper(),
+                    'value': value
+                })
+
+    df_long = pd.DataFrame(data)
+    return df_long
+
+
+
+
+def test_index_discrimination(collected_means):
+    """
+    Test whether W, R, N indices differ across sleep stages.
+    Performs repeated measures ANOVA (parametric) or Friedman test (non-parametric)
+    with post-hoc pairwise comparisons and multiple testing correction.
+    Additionally tests:
+      - W and R: target stage vs all others (per-bar)
+      - N: NREM (N1+N2+N3) vs non-NREM, and intra-NREM (N3 vs N1+N2)
+
+    Parameters
+    ----------
+    collected_means : dict
+        Structure: collected_means[state][index] = list of subject values
+
+    Returns
+    -------
+    results : dict
+    """
+    import numpy as np
+    import pandas as pd
+    from scipy.stats import f_oneway, friedmanchisquare, shapiro, wilcoxon
+    from itertools import combinations
+    from statsmodels.stats.multitest import multipletests
+
+    states = ['Wake', 'N1', 'N2', 'N3', 'REM']
+    indices = ['w', 'r', 'n']
+    results = {}
+
+    for idx in indices:
+        # Gather data per stage
+        data_by_stage = [np.array(collected_means[state][idx]) for state in states]
+        min_len = min(len(d) for d in data_by_stage)
+        data_by_stage_equal = [d[:min_len] for d in data_by_stage]
+        df = pd.DataFrame({state: data_by_stage_equal[i] for i, state in enumerate(states)})
+
+        # Normality check
+        normality = [shapiro(df[state])[1] > 0.05 for state in states]
+        if all(normality):
+            f_stat, p_val = f_oneway(*[df[state] for state in states])
+            test_type = 'ANOVA'
+        else:
+            f_stat, p_val = friedmanchisquare(*[df[state] for state in states])
+            test_type = 'Friedman'
+
+        results[idx] = {'test': test_type, 'stat': f_stat, 'p_uncorrected': p_val}
+
+        # Post-hoc pairwise comparisons
+        pairwise_p = {}
+        for s1, s2 in combinations(states, 2):
+            try:
+                stat, p = wilcoxon(df[s1], df[s2])
+            except ValueError:
+                p = np.nan
+            pairwise_p[f'{s1} vs {s2}'] = p
+        corrected = multipletests(list(pairwise_p.values()), method='bonferroni')[1]
+        results[idx]['posthoc_corrected'] = {k: v for k, v in zip(pairwise_p.keys(), corrected)}
+
+        # --- Target stage tests ---
+        target_stage_test = {}
+
+        if idx in ['w', 'r']:
+            # W or R: target stage vs all others individually
+            target_stage = 'Wake' if idx == 'w' else 'REM'
+            stage_values = np.array(collected_means[target_stage][idx])
+            other_stages = [s for s in states if s != target_stage]
+            other_values = np.concatenate([np.array(collected_means[s][idx]) for s in other_stages])
+            min_len_target = min(len(stage_values), len(other_values))
+            try:
+                stat, p_target = wilcoxon(stage_values[:min_len_target], other_values[:min_len_target])
+            except ValueError:
+                p_target = np.nan
+            target_stage_test[target_stage] = {'p_raw': p_target, 'significant': p_target < 0.05 if not np.isnan(p_target) else False}
+
+        elif idx == 'n':
+            # N: NREM vs non-NREM
+            nrem_stages = ['N1', 'N2', 'N3']
+            non_nrem_stages = ['Wake', 'REM']
+            nrem_values = np.concatenate([np.array(collected_means[s][idx]) for s in nrem_stages])
+            non_nrem_values = np.concatenate([np.array(collected_means[s][idx]) for s in non_nrem_stages])
+            min_len_target = min(len(nrem_values), len(non_nrem_values))
+            try:
+                stat, p_nrem = wilcoxon(nrem_values[:min_len_target], non_nrem_values[:min_len_target])
+            except ValueError:
+                p_nrem = np.nan
+            target_stage_test['NREM'] = {'p_raw': p_nrem, 'significant': p_nrem < 0.05 if not np.isnan(p_nrem) else False}
+
+            # Intra-NREM: N3 vs N1+N2
+            n3_values = np.array(collected_means['N3'][idx])
+            n1n2_values = np.concatenate([np.array(collected_means[s][idx]) for s in ['N1', 'N2']])
+            min_len_intra = min(len(n3_values), len(n1n2_values))
+            try:
+                stat, p_n3 = wilcoxon(n3_values[:min_len_intra], n1n2_values[:min_len_intra])
+            except ValueError:
+                p_n3 = np.nan
+            target_stage_test['N3_vs_N1N2'] = {'p_raw': p_n3, 'significant': p_n3 < 0.05 if not np.isnan(p_n3) else False}
+
+        results[idx]['target_stage_test'] = target_stage_test
+
+    return results
 
 def extract_index_values_per_state(index_n, index_r, index_w, mapped_scores):
     """
@@ -123,12 +268,24 @@ def plot_index_barplot(collected_means, output_dir):
         'n': bar_width
     }
 
+    # Prepare a list to store values for saving
+    saved_data = []
+
     # Plot each index as a bar group
     for idx in indices:
         means = [np.nanmean(collected_means[state][idx]) for state in states]
         sems = [sem(collected_means[state][idx], nan_policy='omit')
                 if len(collected_means[state][idx]) > 1 else 0
                 for state in states]
+
+        # Append data for saving
+        for state, mean_val, sem_val in zip(states, means, sems):
+            saved_data.append({
+                'State': state,
+                'Index': idx,
+                'Mean': mean_val,
+                'SEM': sem_val
+            })
 
         plt.bar(
             x + offsets[idx],
@@ -156,19 +313,21 @@ def plot_index_barplot(collected_means, output_dir):
     plt.ylabel('Mean Index Value ± SEM')
     plt.title('Wei Indices Across Sleep Stages')
     plt.ylim(0, 1)
-    # Tick labels
     plt.xticks(x, states)
-
-    # Legend in box
     plt.legend(frameon=True, loc='upper right')
-
-    # Light scientific grid
     plt.grid(axis='y', linestyle='--', linewidth=0.7, alpha=0.6)
-
-    # Layout + save
     plt.tight_layout()
+
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Save figure
     plt.savefig(f'{output_dir}/wei_indices_barplot.svg', format='svg')
     plt.close()
+
+    # Save the data to CSV
+    df = pd.DataFrame(saved_data)
+    df.to_csv(os.path.join("D:","EEG_Data_stage","stat_plotting", "values", f'wei_indices_values.csv'), index=False)
 
 def prepare_aperiodic_violin_data(valid_states, normalized_exponents):
     """
@@ -599,6 +758,45 @@ def plot_averaged_mse_violin(mse_violin, output_dir):
     plt.savefig(f"{output_dir}/mse_violin_avg_sem.svg", format="svg")
     plt.show()
 
+from pathlib import Path
+
+def save_violin_inputs_for_stats(
+    aperiodic_violin,
+    dfa_violin,
+    mse_violin,
+    output_dir,
+    filename="sleep_metrics_longform.csv"
+):
+    records = []
+
+    def unpack(metric_name, data_dict):
+        df_plot = data_dict["df_plot"]  # retrieve subject and night info
+        for _, row in df_plot.iterrows():
+            value = row[metric_name.capitalize()] if metric_name != "mse" else row["MSE"]
+            if pd.isna(value):
+                continue
+            records.append({
+                "metric": metric_name,
+                "sleep_state": row["State"],
+                "value": float(value),
+                "subject": row["Subject"],
+                "night": row["Night"],
+                "subject_night": f"{row['Subject']}_{row['Night']}"
+            })
+
+    unpack("aperiodic", aperiodic_violin)
+    unpack("dfa", dfa_violin)
+    unpack("mse", mse_violin)
+
+    df = pd.DataFrame.from_records(records)
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / filename
+    df.to_csv(out_path, index=False)
+
+    return df
+
 def plot_averaged_sleep_boxplots(aperiodic_violin, dfa_violin, mse_violin, output_dir):
     """
     Plot group-level boxplots for Aperiodic, DFA, and MSE metrics
@@ -609,7 +807,12 @@ def plot_averaged_sleep_boxplots(aperiodic_violin, dfa_violin, mse_violin, outpu
     import matplotlib.pyplot as plt
     import seaborn as sns
     import numpy as np
-
+    df_stats = save_violin_inputs_for_stats(
+        aperiodic_violin,
+        dfa_violin,
+        mse_violin,
+        output_dir=r"D:\EEG_Data_stage\stat_plotting\values"
+    )
     # Professional style
     sns.set(style='whitegrid')
     plt.rcParams.update({

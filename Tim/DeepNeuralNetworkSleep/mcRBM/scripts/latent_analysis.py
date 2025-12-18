@@ -536,9 +536,9 @@ class StatesAnalysis(object):
 
             ax1.set_yticklabels(ax1.get_yticks(), fontweight='bold', fontsize=20)           
 
-            fname = 'lState_' + str(lstate) + '.png'
+            fname = 'lState_' + str(lstate) + '.svg'
             fname = os.path.join('./barPlots/', fname)
-            fig.savefig(fname, transparent=True, dpi=100)
+            fig.savefig(fname, format='svg')
             plt.close(fig)
 
 
@@ -586,9 +586,9 @@ class StatesAnalysis(object):
                 l.set_weight("bold")
                 l.set_fontsize(40)
 
-            fname = 'lState_' + str(lstate) + '.png'
+            fname = 'lState_' + str(lstate) + '.svg'
             fname = os.path.join('./ttest/', fname)
-            fig.savefig(fname, transparent=True, dpi=100)
+            fig.savefig(fname, format='svg')
             plt.close(fig)
 
             """
@@ -643,9 +643,9 @@ class StatesAnalysis(object):
 
             ax.set_yticklabels(ax.get_yticks(), fontweight='bold', fontsize=30)
 
-            fname = 'lstate%d.jpeg' %lstate
+            fname = 'lstate%d.svg' %lstate
             fname = os.path.join('./groupBoxPlots/', fname)
-            fig.savefig(fname, format='jpeg', transparent=True, dpi=100)
+            fig.savefig(fname, format='svg')
             plt.close(fig)
 
 
@@ -1330,7 +1330,7 @@ class StatesAnalysis(object):
             l.set_weight("bold")
             l.set_fontsize(15)
 
-        fig.savefig(filename + '.jpeg', format='jpeg', transparent=True, dpi=100)
+        fig.savefig(filename + '.svg', format='svg')
         print("filename :", filename)
 
         plt.close(fig)
@@ -1353,7 +1353,7 @@ class StatesAnalysis(object):
 
         plt.xlim(0, A.shape[0])
         plt.ylim(0, A.shape[1])
-        f1.savefig(filename + '.png', transparent=True, dpi=100)
+        f1.savefig(filename + '.svg', format='svg')
 
     def BoxPlotsSimple(self, d_to_plot_1, fig_path, population, i, labels_1, length_awake, length_n1, length_n2, length_n3, length_rem, range_1, id_bin):
         '''
@@ -1420,9 +1420,9 @@ class StatesAnalysis(object):
                  linewidth=2.)            # line thickness
 
 
-        fname = 'lstate%d_%d.jpeg' %(i, id_dec_bin)
+        fname = 'lstate%d_%d.svg' %(i, id_dec_bin)
         fname = os.path.join(fig_path, fname)
-        fig.savefig(fname, format='jpeg', transparent=True, dpi=100)
+        fig.savefig(fname, format='svg')
         plt.close(fig)
 
     def MI_stimulusH_barPlot(self, MI_stage, stagesH, overAll, saveDir):
@@ -1487,9 +1487,9 @@ class StatesAnalysis(object):
         legend_properties = {'weight':'bold', 'size':65}
         plt.legend(frameon=False, borderaxespad=0., prop=legend_properties, bbox_to_anchor=(.77, 1.05), loc=2)
 
-        fname = 'MIstageH.jpeg'
+        fname = 'MIstageH.svg'
         fname = os.path.join(saveDir, fname)
-        fig.savefig(fname, format='jpeg', transparent=True, dpi=100)
+        fig.savefig(fname, format='svg', transparent=True, dpi=100)
         plt.close(fig)
 
     def entropiesHistogram(self, entropies, saveDir):
@@ -1541,9 +1541,9 @@ class StatesAnalysis(object):
         plt.ylabel('Number of Latent States', fontsize=25, fontweight='bold')
         plt.legend()
 
-        fname = 'entropiesHist.png'
+        fname = 'entropiesHist.svg'
         fname = os.path.join(saveDir, fname)
-        plt.savefig(fname, transparent=True, dpi=100)
+        plt.savefig(fname, format='svg')
         plt.close(f1)       
 
     def plotHistogram(self, saveDir, name, yLim):       
@@ -1598,9 +1598,9 @@ class StatesAnalysis(object):
         legend = plt.legend(handles=[wake_patch, n1_patch, n2_patch, n3_patch, rem_patch], borderaxespad=0., fontsize=30, prop=legend_properties)
         frame = legend.get_frame().set_alpha(0)
 
-        fname = 'coloredHistogram' + name + '.png'      
+        fname = 'coloredHistogram' + name + '.svg'
         fname = os.path.join(saveDir, fname)
-        plt.savefig(fname, transparent=True, dpi=100)       
+        plt.savefig(fname, format='svg')
         plt.close(fig)
 
     def visualizeDistribution(self, d, A, B, labels, saveDir, filename):
@@ -1669,7 +1669,7 @@ class StatesAnalysis(object):
             f.text(0.25, .04, "%s" %M2[:7], fontweight='bold', fontsize=20)
             f.text(0.3, .01, "...%s" %M2[7::], fontweight='bold', fontsize=20)
 
-        fname = os.path.join(saveDir, filename)
-        f.savefig(fname, transparent=True, dpi=100)
+        fname = os.path.join(saveDir, "vis_dist.svg")
+        f.savefig(fname, format='svg')
         plt.close(f)
     
