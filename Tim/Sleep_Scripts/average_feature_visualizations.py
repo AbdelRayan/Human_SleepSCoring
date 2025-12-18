@@ -1433,8 +1433,58 @@ def plot_index_avg_violin_WNR(means, output_dir, letters=('A', 'B', 'C'), show=F
     print(f"Saved combined violin plot: {save_path}")
 
 import os
-import numpy as np
-import matplotlib.pyplot as plt
+from pathlib import Path
+
+def save_signal_boxplot_inputs_for_stats(results, output_dir, signal_keys=["noise", "theta", "delta"],
+                                         filename="sleep_metrics_longform_signals.csv"):
+    """
+    Save underlying data used for boxplots to a long-form CSV suitable for stats in R.
+
+    Parameters
+    ----------
+    results : dict
+        Nested dict: results[subj][night][signal][state] = value
+    output_dir : str or Path
+        Directory to save CSV
+    signal_keys : list
+        List of signals to extract
+    filename : str
+        CSV filename
+    """
+    records = []
+    state_map = {"w": "W", "n1": "N1", "n2": "N2", "n3": "N3", "r": "REM"}
+
+    for subj, nights in results.items():
+        for night, signal_dict in nights.items():
+            for signal_key in signal_keys:
+                if signal_key not in signal_dict:
+                    continue
+                state_vals = signal_dict[signal_key]
+                for state_raw, value in state_vals.items():
+                    if value is None or np.isnan(value):
+                        continue
+                    state_std = state_map.get(state_raw.lower())
+                    if state_std is None:
+                        continue
+                    records.append({
+                        "metric": signal_key,
+                        "sleep_state": state_std,
+                        "value": float(value),
+                        "subject": subj,
+                        "night": night,
+                        "subject_night": f"{subj}_{night}"
+                    })
+
+    df = pd.DataFrame.from_records(records)
+
+    output_dir = r"D:\EEG_Data_stage\stat_plotting\values"
+    # output_dir.mkdir(parents=True, exist_ok=True)
+    out_path = os.path.join(output_dir, filename)
+    df.to_csv(out_path, index=False)
+
+    print(f"Saved long-form CSV for stats: {out_path}")
+    return df
+
 
 def plot_signal_boxplot_all_combined(results, output_dir,
                                      signal_keys=["noise", "theta", "delta"],
@@ -1470,7 +1520,7 @@ def plot_signal_boxplot_all_combined(results, output_dir,
     import seaborn as sns
 
     os.makedirs(output_dir, exist_ok=True)
-
+    df_stats = save_signal_boxplot_inputs_for_stats(results, output_dir)
     sns.set(style='whitegrid')
     plt.rcParams.update({
         'font.size': 14,
