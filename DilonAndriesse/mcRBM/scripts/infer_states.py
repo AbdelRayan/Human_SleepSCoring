@@ -84,11 +84,12 @@ class GetStates(object):
         uniqueCount = np.array([np.sum(ic == i) for i in range(len(uniqueFramesID))])
         p_unique = self.p_all[uniqueFramesID]
         uniqueStates = np.zeros((len(uniqueAct), len(uniqueAct[0]) + 2))
-        print(self.states['downsampledStates'])
-        print(self.binary_latentActivation)
+        print(self.states)
+        print(len(self.states['downsampledStates'][0]))
+        print(len(self.binary_latentActivation))
         inferredStates = np.column_stack((
             np.zeros(len(self.binary_latentActivation)),
-            self.states['downsampledStates'].astype(int).flatten()[:len(self.binary_latentActivation)]))
+            self.states['downsampledStates'][0].astype(int).flatten()[:len(self.binary_latentActivation)]))
 
         for i in range(len(uniqueAct)):
             uniqueStates[i, 0] = i + 1
