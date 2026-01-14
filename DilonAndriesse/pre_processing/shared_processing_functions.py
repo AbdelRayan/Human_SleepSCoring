@@ -175,6 +175,16 @@ def preprocess_egi(mne_obj, highpass, lowpass):
 
 
 def create_mat(output_path, subject, ch_pb, data):
+    """
+    Create a .mat file from channel data with channel specific name.
+    
+    Parameters:
+        output_path (str): Filepath to output directory.
+        subject (str): Subject name.
+        ch_pb (str): addition variable name.
+        data (array): data to save to .mat file.
+    """
+    # try to reshape 
     try:
         scipy.io.savemat(
                 f"{output_path}/{subject}_{ch_pb}.mat", 
@@ -189,15 +199,29 @@ def create_mat(output_path, subject, ch_pb, data):
 
 
 def get_stages(raw, stage_id):
+    """
+    Get sleep states from EEG object and convert to numeric sleep state system.
+    
+    Parameters:
+        raw (obj): raw mne object with EGI data.
+        stage_id (dict): Dictionary with sleep state (str) and 
+                         corresponding sleep state (int).
+
+    Returns:
+
+    """
     fs = raw.info["sfreq"]
     sleep_states = []
 
+    # iterate annotations
     for anno in raw.annotations:
         stage = str(anno["description"])
         duration_sample = int(anno["duration"] * fs)
 
+        # add sleep states (int) to list
         if stage in stage_id:
             sleep_states.extend([stage_id[stage]] * duration_sample)
+        # unknown states are set to 5 for artefact
         else:
             sleep_states.extend([5] * duration_sample)
 
