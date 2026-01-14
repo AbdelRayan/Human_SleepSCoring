@@ -8,11 +8,15 @@ dataset extraction to machine learning and latent state inference.
 
 ## Installation
 ### 1. Clone the repository
-    (Add code required for cloning here)
+The repository url can be found in the main GIT page, under the "Code" tab.
+
+    git -clone <repository_url>
+    
 ### 2. Install dependencies
     (create conda environment file and add the instruction to create new conda environment here)
 
 ## Usage
+Base explanation of the script needed to get from .EDF files to inferred latent states. A more in depth view of the different scripts can be found in their corresponding directories.
 ### 0. General
 Most Jupyter Notebook scripts (except for visualize_data.ipynb) contain cells near the top in the following formats:
 
@@ -31,74 +35,38 @@ Most Jupyter Notebook scripts (except for visualize_data.ipynb) contain cells ne
 These cells are where you can manually adjust the paths to the required files and set your own custom variables for each of the scripts.
 
 ### 1. Pre-processing
-If you have EEG data available in EDF format skip step "0. Convert EGI to EDF"
-#### 0. Convert EGI to EDF
-To use most of the pre-processing scripts, it is required that your EEG data is available in EDF format.
-If your data is a .RAW EGI file you can use the egi_to_edf.ipynb Jupyter Notebook to convert.
-This script only works when the EGI files are available in a specific format like this:
+If you have EEG data available in EDF format skip step "0. Convert EGI to EDF".
 
-    main_directory (EGI)/
-        |
-        ├── Subject1/
-        |    |
-        |    ├──"datasetname_subject1_night1 dateofrecording.RAW"
-        |    ├──"datasetname_subject1_night2 dateofrecording.RAW"
-        | 
-        ├── Subject2/
-        |    |
-        |    ├──"datasetname_subject1_night1 dateofrecording.RAW"
-        |    ├──"datasetname_subject1_night2 dateofrecording.RAW"
-        |
-        ├── Etc...
+From the "pre_processing" directory run, "extract_data_edf.ipynb" to extract all required data from .EDF files into .mat files that are required for feature computation.
 
-An example of a file name would be something like this: "CURRENTSTUDY_S35_1 2 20201214 2207.RAW"
-From this file the subject is extract with the following naming convention: "subject_night" i.e. "S35_1".
-        
-#### 1. Extract data
-Most of the scripts available form previous research working using .mat file types. This step applies some preprocessing steps such as a bandpass and creates required channels and converts that data in .mat file types to work with the following steps. To do this use run all in the "extract_data_edf.ipynb" Jupyter. This adds all .mat files from all subject into a singular directory. There are 5 files per subject, the Fpz-Cz, Pz-Oz, EMG and EOG channels, and the sleep states. 
-
-Layout looks like this:
-
-    mat_files/
-        |
-        ├──S35_1_Fpz-Cz.mat
-        ├──S35_1_Pz-Oz.mat
-        ├──S35_1_EMG.mat
-        ├──S35_1_EOG.mat
-        ├──S35_1_states.mat
-        ├──S35_2_Fpz-Cz.mat
-        ├──S35_2_Pz-Oz.mat
-        ├──S35_2_EMG.mat
-        ├──S35_2_EOG.mat
-        ├──S35_2_states.mat
-        ├──Etc...
-
-### 2 Data visualization
-This directory is used to visualize the input data and features, to manually check wether these feature properly represent the different sleep states.
-#### 1. Input data
-This Notebook visualizes the input data. This script has a config file in which you can manually set variables to be used for the visualization. This file is called "visualization_config.yaml".
-#### 2. Rodent features
-This notebook visualizes the main features used in the rodent research. These images are saved to a custom path you have to set. There these images are saved per subject. The structure may look something like this:
-
-    feature_visualization/
-        |
-        ├──Category_name (i.e. "10s-epochs")
-            ├──S35_1
-            |    ├──normalized_emg.svg
-            |    ├──wei_all-indices.svg
-            |    ├──wei-indices_vs_new-indices.svg
-            |    ├──Etc...
-            ├──S35_2
-            |    ├──normalized_emg.svg
-            |    ├──wei_all-indices.svg
-            |    ├──wei-indices_vs_new-indices.svg
-            |    ├──Etc...
-            ├──Etc...
-#### 3. New features
-#### 4. Recreation of paper on fractal cycle analysis
 ### 3. HDF5 creation
-### 4. mcRBM
-#### 1. Configuration
-#### 2. Training
-#### 3. Analysis
+From the "hdf5_files" directory, run the "create_hdf5.ipynb" script to create a hdf5 file from your collection of .mat files. 
 
+To create data that can be used for machine learning, run the "dataset_extraction.ipynb" script. This creates both a training and testing dataset within their specific folders as such: 
+
+    training/
+        |
+        ├──features.npy 
+        ├──states.mat
+
+    testing/
+        |
+        ├──features.npy 
+        ├──states.mat
+
+Make sure these files end up under "mcRBM/sample_data/input/{category_name}/".
+
+### 4. mcRBM
+Config files for the mcRBM model can be found under "mcRBM/configuration_files/".
+Within exp_details and exp_details, adjust the paths to your current setup and give the model a name. Make sure to use the training data for exp_details and the testing data for exp_details_test.
+
+First run the "mcRBM_input_features.ipynb" script from the "mcRBM/sample_data/" directory to create a features.npz file, which is required for the training of the model.
+
+Now run the "train_model.ipynb" script from the "mcRBM/run_model/" directory to start training the model. Depending on the amount of datapoints in your dataset training could take a while.
+
+After training you can run the following two scripts from "mcRBM/run_model/" successively: "infer_states_test.ipynb" followed by "latent_states_analysis.ipynb". The results from these scripts can be found under "mcRBM/sample_data/experiments/{model_name}/analysis/".
+
+## References
+Link to Sleep-EDF Database Expanded dataset: https://physionet.org/content/sleep-edfx/1.0.0/
+
+1. Kemp, B., & Roessen, M. (2018). Sleep-EDF Expanded (Version 1.0.0) [Data set]. PhysioNet. https://physionet.org/content/sleep-edfx/1.0.0/
