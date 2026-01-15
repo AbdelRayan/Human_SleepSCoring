@@ -9,6 +9,8 @@ import PIL.Image
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
 
+#np.set_printoptions(threshold=np.inf, linewidth=np.inf, precision=6)
+
 class GetStates(object):
     def __init__(self, refDir, expDoneFlag, modelDir, finalModel):
         self.refDir = refDir
@@ -31,6 +33,7 @@ class GetStates(object):
         self.d = dataFile['data']
         self.obsKeys = dataFile['obsKeys'].astype(int)
         self.states = loadmat(f'{statesFilePath}{statesFile}')
+
         self.states['downsampledStates'] = self.states.pop('states')
 
     def computeStates(self):
@@ -65,6 +68,7 @@ class GetStates(object):
         resized_image = image.resize((1200, 1200))
         resized_image.save('./hmActivation/%i.png' % self.epochID)
 
+        print("self.p_all:", self.p_all)
         self.binary_latentActivation = (self.p_all >= 0.5).astype(int)
         plt.figure(figsize=(10, 50))
         plt.imshow(self.binary_latentActivation, cmap='gray')
@@ -80,9 +84,12 @@ class GetStates(object):
         uniqueCount = np.array([np.sum(ic == i) for i in range(len(uniqueFramesID))])
         p_unique = self.p_all[uniqueFramesID]
         uniqueStates = np.zeros((len(uniqueAct), len(uniqueAct[0]) + 2))
+        print(self.states)
+        print(len(self.states['downsampledStates'][0]))
+        print(len(self.binary_latentActivation))
         inferredStates = np.column_stack((
             np.zeros(len(self.binary_latentActivation)),
-            self.states['downsampledStates'].astype(int).flatten()[:len(self.binary_latentActivation)]))
+            self.states['downsampledStates'][0].astype(int).flatten()[:len(self.binary_latentActivation)]))
 
         for i in range(len(uniqueAct)):
             uniqueStates[i, 0] = i + 1
@@ -166,7 +173,11 @@ class GetStates(object):
         l = np.sqrt(lsq)
         normD = self.d / l
 
-        logisticArg_c = (-0.5 * np.dot(FH.T, np.square(np.dot(VF.T, normD.T))) + bias_cov).T
+        print(FH.T.shape)
+        print(VF.T.shape)
+        print(normD.T.shape)
+        print(bias_cov.shape)
+        logisticArg_c = (-0.5 * np.dot(FH.T, np.square(np.dot(VF.T, normD.T))) + bias_cov.T).T
 
         print("logisticArg_c min : ", np.min(logisticArg_c))
         print("logisticArg_c max : ", np.max(logisticArg_c))
@@ -175,7 +186,10 @@ class GetStates(object):
 
         p_hc = self.logisticFunc(logisticArg_c)
 
-        logisticArg_m = np.dot(self.d, w_mean) + bias_mean.T
+        # Auto-correct orientation
+        if w_mean.shape[1] != self.d.shape[1]:  # if second dim != visible dim
+            w_mean = w_mean.T
+        logisticArg_m = (np.dot(self.d, w_mean.T) + bias_mean)
 
         print("logisticArg_m min : ", np.min(logisticArg_m))
         print("logisticArg_m max : ", np.max(logisticArg_m))
@@ -188,6 +202,7 @@ class GetStates(object):
 
 
 if __name__ == "__main__":
+    print("TEST")
     import argparse
 
     parser = argparse.ArgumentParser()

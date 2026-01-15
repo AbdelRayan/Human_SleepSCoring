@@ -123,24 +123,53 @@ def wei_normalizing(data):
 
 
 def aperiodic_fit(window_data, fs):
+    """
+    Get aperiodic component from a signal segment.
+
+    Parameters:
+      window_data (array): segment of EEG signal.
+      fs (int): sampling frequency.
+
+    Returns:
+      aperiodic (float): aperiodic exponent.
+    """
+    # calculate psd
     freqs, psd = welch(window_data, fs=fs, nperseg=1024)
 
     mask = (freqs <= 75)
     freqs, psd = freqs[mask], psd[mask]
+
+    # ensuring numerical stability by masking 0 values with very small 
+    # value instead
     psd = np.where(psd > 0, psd, 1e-12)
 
+    # fit model
     fm = SpectralModel(min_peak_height=0.05, aperiodic_mode='fixed', verbose=False)
     fm.fit(freqs, psd)
 
+    # return nan if fitting fails
     if not fm.has_model:
         return np.nan 
 
+    # extract exponent
     aperiodic = fm.get_params('aperiodic')[1]
 
     return aperiodic
 
 
-def calc_aperiodic_fit(data, window_size, epoch_length, fs):
+def calc_aperiodic_fit(data, window_size, fs):
+  """
+  Compute aperiodic fit from EEG data.
+  
+  Parameters:
+    data (array): EEG data.
+    window_size (int): Size of window to calculate exponent from.
+    fs (int): sampling frequency.
+
+  Returns:
+    normalized_exponents (array): normalized and smoothed 
+                                  aperiodic exponents.
+  """
   window_data = []
 
   num_windows = len(data) // window_size
@@ -152,7 +181,6 @@ def calc_aperiodic_fit(data, window_size, epoch_length, fs):
 
   aperiodic_exponents = Parallel(n_jobs=-1)(delayed(aperiodic_fit)(window, fs) for window in window_data)
 
-  #filtered_exponents_z = (filtered_exponents - np.mean(filtered_exponents)) / np.std(filtered_exponents)
   window_length = 11 if len(aperiodic_exponents) >= 11 else len(aperiodic_exponents) | 1  # ensure it's odd
   polyorder = 4
 
@@ -164,10 +192,23 @@ def calc_aperiodic_fit(data, window_size, epoch_length, fs):
 
 
 def calc_dfa(data, window_size, step_size, fs):
+  """
+  Compute Detrended Fluctation Analysis from EEG data.
+  
+  Parameters:
+    data (array): EEG data.
+    window_size (int): Size of window to calculate exponent from.
+    step_size (int): amount of samples between windows.
+    fs (int): sampling frequency.
+
+  Returns:
+    normalized_dfa (array): normalized and smoothed DFA
+  """
   num_windows = (len(data) - window_size) // step_size + 1
 
   # fix for issues caused by an extended period of 0 values (a flat line)
   # suggested by ChatGPT, tested, modified and verified by me
+  # keeps track of windows with non flat data
   dfa_exponents = np.zeros(num_windows)
   valid_indices = np.zeros(num_windows, dtype=bool)
 
@@ -181,20 +222,26 @@ def calc_dfa(data, window_size, step_size, fs):
       if np.all(segment == 0):
          continue
 
+      # compute dfa
       _, _, exp_window = compute_fluctuations(segment, fs, n_scales=10,
                                               min_scale=0.05, max_scale=4.0)
 
       dfa_exponents[i] = exp_window
       valid_indices[i] = True
 
+  # extract valid indices
   valid_exponents = dfa_exponents[valid_indices]
   valid_exponents = np.array(valid_exponents)
+
+  # smoothing
   window_length = 11 if len(valid_exponents) >= 11 else len(valid_exponents) | 1  # ensure it's odd
   polyorder = 4
-
   smoothed_dfa = savgol_filter(valid_exponents, window_length=window_length, polyorder=polyorder)
+
+  # normalizing (look into for causing tails in histogram)
   normalized_dfa = 2 * ((smoothed_dfa - min(smoothed_dfa)) /(max(smoothed_dfa) - min(smoothed_dfa))) - 1
 
+  # insert normalized values into original array
   dfa_exponents[valid_indices] = normalized_dfa
   normalized_dfa = dfa_exponents
 
@@ -202,6 +249,18 @@ def calc_dfa(data, window_size, step_size, fs):
 
 
 def calc_mse(data, window_size, step_size, fs):
+  """
+  Compute Multiscale Entropy from EEG data.
+  
+  Parameters:
+    data (array): EEG data.
+    window_size (int): Size of window to calculate exponent from.
+    step_size (int): amount of samples between windows.
+    fs (int): sampling frequency.
+
+  Returns:
+    normalized_mse (array): normalized and smoothed MSE.
+  """
   Mobj = EH.MSobject('IncrEn', m=2, R=3, Norm=True)
 
   num_windows = (len(data) - window_size) // step_size + 1

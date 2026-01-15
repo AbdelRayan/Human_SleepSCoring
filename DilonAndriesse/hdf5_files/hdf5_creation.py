@@ -1,5 +1,6 @@
 import numpy as np
 import h5py
+from scipy.signal import savgol_filter, hilbert
 from scipy.stats import mode
 from scipy.io import loadmat
 import os
@@ -14,7 +15,7 @@ from hdf5_files.computing_features import psd_multitaper, wei_normalizing, index
 from hdf5_files.Artefacts_Detection import removeArtefacts, artefact_epochs
 
 
-def getNewFeatures(raw_noise, raw_delta, raw_theta, raw_sigma, raw_gamma, raw_emg, states, fs, epoch_length):
+def getNewFeatures(raw_fpz, raw_pz, raw_emg, raw_eog, states, fs, epoch_length):
   """
   Computes new features from raw data.
 
@@ -54,12 +55,24 @@ def getNewFeatures(raw_noise, raw_delta, raw_theta, raw_sigma, raw_gamma, raw_em
   window_length = fs*epoch_length
 
   # Get powers
-  noise = psd_multitaper(np.ravel(raw_noise), fs, noise_band, window_length)
-  delta = psd_multitaper(np.ravel(raw_delta), fs, delta_band, window_length)
-  theta = psd_multitaper(np.ravel(raw_theta), fs, theta_band, window_length)
-  sigma = psd_multitaper(np.ravel(raw_sigma), fs, sigma_band, window_length)
-  gamma = psd_multitaper(np.ravel(raw_gamma), fs, gamma_band, window_length)
+  noise = psd_multitaper(np.ravel(raw_pz), fs, noise_band, window_length)
+  delta = psd_multitaper(np.ravel(raw_fpz), fs, delta_band, window_length)
+  theta = psd_multitaper(np.ravel(raw_pz), fs, theta_band, window_length)
+  sigma = psd_multitaper(np.ravel(raw_fpz), fs, sigma_band, window_length)
+  gamma = psd_multitaper(np.ravel(raw_fpz), fs, gamma_band, window_length)
+  hilbert_eog = np.abs(hilbert(raw_eog))
 
+  ### uncomment to check the effects of log normalization on 
+  ### feature histogram
+  # noise_norm = np.log(noise)
+  # delta_norm = np.log(delta)
+  # theta_norm = np.log(theta)
+  # sigma_norm = np.log(sigma)
+  # gamma_norm = np.log(gamma)
+  # emg_norm = np.log(raw_emg)
+
+  ### comment to check the effects of log normalization on 
+  ### feature histogram
   # Normalize all these powers
   noise_norm = wei_normalizing(noise)
   delta_norm = wei_normalizing(delta)
@@ -73,6 +86,7 @@ def getNewFeatures(raw_noise, raw_delta, raw_theta, raw_sigma, raw_gamma, raw_em
   theta_smoothed = np.convolve(np.convolve(np.convolve(theta_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
   delta_smoothed = np.convolve(np.convolve(np.convolve(delta_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
   #emg_smoothed = np.convolve(np.convolve(np.convolve(emg_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
+  eog_smoothed = savgol_filter(hilbert_eog, 11, polyorder=5)
 
   # Compute new indices
   index_w = index_W(theta_norm, gamma_norm, emg_norm)
@@ -92,6 +106,8 @@ def getNewFeatures(raw_noise, raw_delta, raw_theta, raw_sigma, raw_gamma, raw_em
   index_3_log = np.log(index_3)
   index_4_log = np.log(index_4)
 
+  ### comment to check the effects of log normalization on 
+  ### feature histogram
   # Normalise indices
   index_w_norm = wei_normalizing(index_w_log)
   index_n_norm = wei_normalizing(index_n_log)
@@ -100,6 +116,7 @@ def getNewFeatures(raw_noise, raw_delta, raw_theta, raw_sigma, raw_gamma, raw_em
   index_2_norm = wei_normalizing(index_2_log)
   index_3_norm = wei_normalizing(index_3_log)
   index_4_norm = wei_normalizing(index_4_log)
+  eog_norm = wei_normalizing(eog_smoothed)
 
   # Smooth indices
   index_w_smoothed = np.convolve(np.convolve(np.convolve(index_w_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
@@ -111,19 +128,20 @@ def getNewFeatures(raw_noise, raw_delta, raw_theta, raw_sigma, raw_gamma, raw_em
   index_4_smoothed = np.convolve(np.convolve(np.convolve(index_4_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
 
   window_size = epoch_length * fs
-  aperiodic = calc_aperiodic_fit(raw_delta, window_size, epoch_length, fs)
+  aperiodic = calc_aperiodic_fit(raw_fpz, window_size, epoch_length, fs)
   aperiodic = np.array(aperiodic)
-  #aperiodic_norm = wei_normalizing(aperiodic)
-  dfa = calc_dfa(raw_delta, window_size, window_size, fs)
+  aperiodic_norm = wei_normalizing(aperiodic)
+  # aperiodic_norm = np.log(aperiodic)
+  dfa = calc_dfa(raw_fpz, window_size, window_size, fs)
   dfa = np.array(dfa)
-  #dfa_norm = wei_normalizing(dfa)
-  mse = calc_mse(raw_delta, window_size, window_size, fs)
+  dfa_norm = wei_normalizing(dfa)
+  # dfa_norm = np.log(dfa)
+  mse = calc_mse(raw_fpz, window_size, window_size, fs)
   mse = np.array(mse)
-  #mse_norm = wei_normalizing(mse)
+  mse_norm = wei_normalizing(mse)
+  # mse_norm = np.log(mse)
   # Create matrix
-  # new_features = np.column_stack((index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed))
-  new_features = np.column_stack((index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed, aperiodic, dfa, mse))
-  
+  new_features = np.column_stack((index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed, aperiodic_norm, dfa_norm, mse_norm, eog_norm))
   
   return new_features, mapped_scores
 
@@ -145,17 +163,10 @@ def prepare_for_hdf5(subject_name, recording, fs, files_path, epoch_length, path
   """
   # Get the right data
   for i in recording:
-    if 'Noise' in i:
-      noise = i
-    if 'Delta' in i:
-      delta = i
-    if 'Theta' in i:
-      theta = i
-    if 'Sigma' in i:
-      sigma = i
-    if 'Gamma' in i:
-      gamma = i
-
+    if 'Fpz-Cz' in i:
+      fpz = i
+    if 'Pz-Oz' in i:
+      pz = i
     elif 'EMG' in i:
       emg = i
     elif 'EOG' in i:
@@ -165,35 +176,26 @@ def prepare_for_hdf5(subject_name, recording, fs, files_path, epoch_length, path
 
   print(f"Subject name: {subject_name}")
 
-  noise_data = loadmat(os.path.join(files_path, noise))
-  noise_data = next(v for k, v in noise_data.items() if 'Noise' in k)
-  sig_noise = removeArtefacts(noise_data, fs, [9,8], [0.2,0.1])
-  noise_filt = np.ravel(sig_noise[0])
-  noise_artefact_indexes = np.ravel(sig_noise[1])
+  fpz_data = loadmat(os.path.join(files_path, fpz))
+  fpz_data = next(v for k, v in fpz_data.items() if 'Fpz-Cz' in k)
+  sig_fpz = removeArtefacts(fpz_data, fs, [9,8], [0.2,0.1])
+  fpz_filt = np.ravel(sig_fpz[0])
+  fpz_artefact_indexes = np.ravel(sig_fpz[1])
 
-  delta_data = loadmat(os.path.join(files_path, delta))
-  delta_data = next(v for k, v in delta_data.items() if 'Delta' in k)
-  sig_delta = removeArtefacts(delta_data, fs, [9,8], [0.2,0.1])
-  delta_filt = np.ravel(sig_delta[0])
-  delta_artefact_indexes = np.ravel(sig_delta[1])
+  pz_data = loadmat(os.path.join(files_path, pz))
+  pz_data = next(v for k, v in pz_data.items() if 'Pz-Oz' in k)
+  sig_pz = removeArtefacts(pz_data, fs, [9,8], [0.2,0.1])
+  pz_filt = np.ravel(sig_pz[0])
+  pz_artefact_indexes = np.ravel(sig_pz[1])
 
-  theta_data = loadmat(os.path.join(files_path, theta))
-  theta_data = next(v for k, v in theta_data.items() if 'Theta' in k)
-  sig_theta = removeArtefacts(theta_data, fs, [9,8], [0.2,0.1])
-  theta_filt = np.ravel(sig_theta[0])
-  theta_artefact_indexes = np.ravel(sig_theta[1])
-
-  sigma_data = loadmat(os.path.join(files_path, sigma))
-  sigma_data = next(v for k, v in sigma_data.items() if 'Sigma' in k)
-  sig_sigma = removeArtefacts(sigma_data, fs, [9,8], [0.2,0.1])
-  sigma_filt = np.ravel(sig_sigma[0])
-  sigma_artefact_indexes = np.ravel(sig_sigma[1])
-
-  gamma_data = loadmat(os.path.join(files_path, gamma))
-  gamma_data = next(v for k, v in gamma_data.items() if 'Gamma' in k)
-  sig_gamma = removeArtefacts(gamma_data, fs, [9,8], [0.2,0.1])
-  gamma_filt = np.ravel(sig_gamma[0])
-  gamma_artefact_indexes = np.ravel(sig_gamma[1])
+  eog_data = loadmat(os.path.join(files_path, eog))
+  eog_data = next(v for k, v in eog_data.items() if 'EOG' in k)
+  sig_eog = removeArtefacts(eog_data, fs, [9,8], [0.2,0.1])
+  eog_filt = np.ravel(sig_eog[0])
+  eog_filt = eog_filt[:len(eog_filt) // (epoch_length * fs) * (epoch_length*fs)]
+  eog_filt = eog_filt.reshape(-1, (epoch_length * fs))
+  eog_filt = eog_filt.sum(axis=1)
+  eog_artefact_indexes = np.ravel(sig_eog[1])
 
   EMG_data = loadmat(os.path.join(files_path, emg))
   emg_data = next(v for k, v in EMG_data.items() if 'EMG' in k)
@@ -208,10 +210,8 @@ def prepare_for_hdf5(subject_name, recording, fs, files_path, epoch_length, path
   states = sleep_scoring['states']
   states = states[0]
 
-  print(len(delta_filt))
-
   # Create matrix for specific set of recordings
-  a = getNewFeatures(noise_filt, delta_filt, theta_filt, sigma_filt, gamma_filt, emg_filt, states, fs, epoch_length)
+  a = getNewFeatures(fpz_filt, pz_filt, emg_filt, eog_filt, states, fs, epoch_length)
   Features = a[0]
   Mapped_scores = a[1]
   print(f"Size of epoched features: {len(Features)}")
@@ -221,13 +221,11 @@ def prepare_for_hdf5(subject_name, recording, fs, files_path, epoch_length, path
   window_length = fs * epoch_length
 
 
-  noise_arte_epochs = artefact_epochs(noise_artefact_indexes, window_length)
-  delta_arte_epochs = artefact_epochs(delta_artefact_indexes, window_length)
-  theta_arte_epochs = artefact_epochs(theta_artefact_indexes, window_length)
-  sigma_arte_epochs = artefact_epochs(sigma_artefact_indexes, window_length)
-  gamma_arte_epochs = artefact_epochs(gamma_artefact_indexes, window_length)
+  fpz_arte_epochs = artefact_epochs(fpz_artefact_indexes, window_length)
+  pz_arte_epochs = artefact_epochs(pz_artefact_indexes, window_length)
   emg_arte_epochs = artefact_epochs(emg_artefact_indexes, window_length)
-  artefact_indices = np.unique(np.concatenate((noise_arte_epochs, delta_arte_epochs, theta_arte_epochs, sigma_arte_epochs, gamma_arte_epochs, emg_arte_epochs)))
+  eog_arte_epochs = artefact_epochs(eog_artefact_indexes, window_length)
+  artefact_indices = np.unique(np.concatenate((fpz_arte_epochs, pz_arte_epochs, eog_arte_epochs, emg_arte_epochs)))
   artefact_indices = artefact_indices.astype(int)
   #print(f"Total amount of artefacts indices: {len(artefact_indices)}")
   Mapped_scores[artefact_indices] = 5 
@@ -257,7 +255,7 @@ def update_hdf5(result, path_to_hdf5):
     print(path_to_hdf5)
     print(result[2])
     group = database.create_group(str(result[2]))
-    group.attrs['Description features'] = '[index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed, aperiodic, dfa, mse]'
+    group.attrs['Description features'] = '[index_w_smoothed, index_r_smoothed, index_n_smoothed, index_1_smoothed, index_2_smoothed, index_3_smoothed, index_4_smoothed, noise_smoothed, theta_smoothed, delta_smoothed, aperiodic, dfa, mse, eog_smoothed]'
     group.attrs['Description Mapped_scores'] = '[0: Wake, 1: N1, 2: N2, 3: N3, 4: REM, 5: Movement]'
     group.create_dataset('Features', data = result[0])
     group.create_dataset('Mapped_scores', data = result[1])

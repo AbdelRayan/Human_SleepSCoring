@@ -1,0 +1,14 @@
+name: rodent_model
+channels:
+  - defaults
+  - conda-forge
+  - bioconda
+dependencies:
+  - python
+  - numpy
+  - mne
+  - git
+  - nose
+  - neurodsp
+  - imbalanced-learn
+prefix: C:\Users\andri\miniconda3\envs\rodent_model
