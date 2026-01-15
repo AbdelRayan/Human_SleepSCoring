@@ -1,3 +1,6 @@
+import matplotlib as mpl
+mpl.rcParams["svg.fonttype"] = "none"
+
 import os
 import sys
 import pickle
@@ -22,6 +25,7 @@ from sklearn.metrics import DistanceMetric
 
 import sys; 
 from data_preproc import DataPreproc
+
 
 
 class StatesAnalysis(object):   
@@ -224,20 +228,30 @@ class StatesAnalysis(object):
         # EEG_labels = ['Theta', 'Delta', 'Ratio', 'Slope', 'Complexity']
         EEG_labels = ['', 'IndexW', 'IndexR', 'IndexN', 'Index1', 'Index2', 'Index3', 'Index4', '0-0.5hz', 'Theta', 'Delta', 'AperiodicExponent', "DFA", 'MSE', "EOG"]
         # EEG_labels = ['IndexW', 'IndexR', 'IndexN', 'Index1', 'Index2', 'Index3', 'Index4', 'Theta', 'Delta']
-        
-        # if self.features=='bands':
-        #     EEG_labels = ['Delta', 'Theta', 'Alpha', 'Beta', 'Gamma']
-        # elif self.features=='ratios':
-        #     Bands = [r'$\delta$', r'$\theta$', r'$\alpha$', r'$\beta$', r'$\gamma$']
-        #     EEG_labels = []       
-        #     for i in range(5):    
-        #         for j in range(i+1, 5):
-        #             EEG_labels.append(Bands[i] + '$/$' + Bands[j])
-        # else:
-        #     EEG_labels = ['f%d' %(i+1) for i in range( self.dinit.shape[1] -1 )]
 
-        EEG_range = [math.floor(self.dinit[:,:self.dinit.shape[1]-1].min()), math.ceil(self.dinit[:,:self.dinit.shape[1]-1].max())]
         print("self.uniqueStates :", self.uniqueStates)
+        ##########################################
+        # Counts of all states
+        counts = self.uniqueStates[:, 1]
+
+        # Fraction of total occurrences dominated by top N states
+        top_fraction = np.sum(np.sort(counts)[-5:]) / np.sum(counts)
+        print(f"Top 5 states account for {top_fraction*100:.2f}% of total states")
+
+        # How many states are rarely used
+        rare_states = np.sum(counts < 10)  # threshold depends on your dataset size
+        print(f"Number of rarely used states: {rare_states}")
+        
+        hidden_activations = self.uniqueStates[:, 2:]
+        activation_rate = hidden_activations.mean(axis=0)
+
+        plt.bar(range(len(activation_rate)), activation_rate)
+        plt.xlabel("Hidden Unit")
+        plt.ylabel("Mean Activation")
+        plt.title("Hidden Unit Activation Rates")
+        plt.show()
+        ####################################
+        
         all_latent_states = np.empty((len(self.uniqueStates[:, 0]), 20))
         for i in self.uniqueStates[:, 0]:
             id_bin = self.uniqueStates[i,13:]
@@ -763,6 +777,7 @@ class StatesAnalysis(object):
         self.C1 = self.reorderMat(self.lstateColor)
         #-- Visualize array:
         column_labels = ['Wakefulness', 'N1', 'N2', 'N3', 'REM']
+        self.displayMat(self.lstateColor[self.C1, :], column_labels, './heatMap/heatMap')
         self.displayMat(self.lstateColor[self.C1, :], column_labels, './heatMap/heatMap')
 
         #--- Remove the singleton Latent-states:
@@ -1332,6 +1347,7 @@ class StatesAnalysis(object):
             l.set_fontsize(15)
 
         fig.savefig(filename + '.jpeg', format='jpeg', transparent=True, dpi=100)
+        fig.savefig(filename + '.svg', format='svg')
         print("filename :", filename)
 
         plt.close(fig)
@@ -1368,11 +1384,11 @@ class StatesAnalysis(object):
         
         colors = list(plt.rcParams['axes.prop_cycle'])
 
-        fig, ax1 = plt.subplots(figsize=(15, 10), constrained_layout=True)        
+        fig, ax1 = plt.subplots(figsize=(15, 7), constrained_layout=True)        
         id_dec_bin = binary_to_decimal(id_bin)
-        plt.title(f'LS {i}_{id_dec_bin} - Total: {population} epochs\n'
-             f'WAKE: {length_awake*100:.1f}%, N1: {length_n1*100:.1f}%, N2: {length_n2*100:.1f}%, N3: {length_n3*100:.1f}%, REM: {length_rem*100:.1f}%',
-             y=1.001, fontsize=35, fontweight='bold')
+        plt.suptitle(f"LS {i}_{id_dec_bin} - Total: {population} epochs", fontsize=35, fontweight='bold')
+        plt.title(f'WAKE: {length_awake*100:.1f}%, N1: {length_n1*100:.1f}%, N2: {length_n2*100:.1f}%, N3: {length_n3*100:.1f}%, REM: {length_rem*100:.1f}%',
+             y=1.001, fontsize=30, fontweight='bold')
         #
         print(f"ax1.get_xticks(): {ax1.get_xticks()}")
         bp1 = ax1.boxplot(d_to_plot_1, patch_artist=True)
@@ -1404,7 +1420,14 @@ class StatesAnalysis(object):
         print("Number of tick locations on ax1:", len(ax1.get_xticks()))
         print("tick locations on ax1:", ax1.get_xticks())
         
-        xtickNames = ax1.set_xticklabels(labels_1)
+        print(labels_1)
+        new_labels = []
+        for l in labels_1:
+            if l == "AperiodicExponent":
+                l = "AE"
+            new_labels.append(l)
+        print(new_labels)
+        xtickNames = ax1.set_xticklabels(new_labels)
         plt.setp(xtickNames, rotation=90, fontsize=35, fontweight='bold')
 
         plt.setp(bp1['boxes'],            # customise box appearance
@@ -1420,8 +1443,11 @@ class StatesAnalysis(object):
 
 
         fname = 'lstate%d_%d.jpeg' %(i, id_dec_bin)
+        svg_name = "lstate%d_%d.svg"  %(i, id_dec_bin)
         fname = os.path.join(fig_path, fname)
+        svg_name = os.path.join(fig_path, svg_name)
         fig.savefig(fname, format='jpeg', transparent=True, dpi=100)
+        fig.savefig(svg_name, format="svg")
         plt.close(fig)
 
     def MI_stimulusH_barPlot(self, MI_stage, stagesH, overAll, saveDir):
@@ -1486,7 +1512,10 @@ class StatesAnalysis(object):
 
         fname = 'MIstageH.jpeg'
         fname = os.path.join(saveDir, fname)
+        svg_name = 'MIstageH.svg'
+        svg_name = os.path.join(saveDir, svg_name)
         fig.savefig(fname, format='jpeg', transparent=True, dpi=100)
+        fig.savefig(svg_name, format='svg')
         plt.close(fig)
 
     def entropiesHistogram(self, entropies, saveDir):
@@ -1561,10 +1590,37 @@ class StatesAnalysis(object):
 
         width = 0.8
 
-        colors = self.lstateColorThresh[self.C2, :]     
-        counts = self.centroidsHist[:, 1][self.C2]      
-        for i in range( len(self.uniqueStates[self.uniqueStates[:, 1] > self.threshold, 0]) ):
-            ax1.bar(ind[i], counts[i], width, color=(colors[i, 2], colors[i, 1], colors[i, 0]), edgecolor = "none")
+        n_latent = self.lstateColorThresh.shape[0]
+        stage_labels = ["Wakefulness", "N1", "N2", "N3", "REM"]
+        stage_colors = np.array([
+            [0.0314, 0.1647, 0.3294],  # #082a54
+            [0.9412, 0.7725, 0.4431],  # #f0c571
+            [0.3490, 0.6588, 0.6118],  # #59a89c
+            [0.6471, 0.3490, 0.6667],  # #a559aa
+            [0.8784, 0.1686, 0.2078],  # #e02b35
+        ])
+
+        # stage_ratios = self.lstateColorThresh[self.C2, :]
+        # mixed_colors = stage_ratios @ stage_colors
+        # #colors = ["#082a54", "#f0c571", "#59a89c", "#a559aa", "#e02b35"]     
+        # counts = self.centroidsHist[:, 1][self.C2]      
+        # for i in range( len(self.uniqueStates[self.uniqueStates[:, 1] > self.threshold, 0]) ):
+        #     ax1.bar(ind[i], counts[i], width, color=mixed_colors[i], edgecolor = "none")
+        total_counts = self.centroidsHist[:, 1][self.C2]
+        counts = total_counts[:, None] * self.lstateColorThresh[self.C2, :] 
+
+        bottom = np.zeros(n_latent)
+
+        for s in range(5):
+            ax1.bar(
+                ind,
+                counts[:, s],
+                bottom=bottom,
+                color=stage_colors[s],
+                edgecolor='none',
+                label=stage_labels[s]
+            )
+            bottom += counts[:, s]
 
         if self.norm == "L2":
             ax1.set_ylabel('L2 Normalized Count', fontweight='bold', fontsize=20)
@@ -1585,18 +1641,25 @@ class StatesAnalysis(object):
         ax1.set_xticks(np.linspace(0, len(self.uniqueStates[self.uniqueStates[:, 1] > self.threshold, 0]), num=10, dtype=np.int32), minor=False)
         ax1.set_xticklabels(ax1.get_xticks(), fontweight='bold', fontsize=17)       
 
-        wake_patch = mpatches.Patch(color=(0.0, 0.0, 1.0), label='Wakefulness')
-        n1_patch = mpatches.Patch(color=(0.0, 1.0, 0.0), label='N1')
-        n2_patch = mpatches.Patch(color=(0.0, 1.0, 0.0), label='N2')
-        n3_patch = mpatches.Patch(color=(0.0, 1.0, 0.0), label='N3')
-        rem_patch = mpatches.Patch(color=(1.0, 0.0, 0.0), label='REM')
+        # wake_patch = mpatches.Patch(color="#082a54", label='Wakefulness')
+        # n1_patch = mpatches.Patch(color="#f0c571", label='N1')
+        # n2_patch = mpatches.Patch(color="#59a89c", label='N2')
+        # n3_patch = mpatches.Patch(color="#a559aa", label='N3')
+        # rem_patch = mpatches.Patch(color="#e02b35", label='REM')
+        legend_handles = [
+            mpatches.Patch(facecolor=stage_colors[i], label=stage_labels[i])
+            for i in range(5)
+        ]
         legend_properties = {'weight':'bold'}
-        legend = plt.legend(handles=[wake_patch, n1_patch, n2_patch, n3_patch, rem_patch], borderaxespad=0., fontsize=30, prop=legend_properties)
+        legend = plt.legend(handles=legend_handles, borderaxespad=0., fontsize=30, prop=legend_properties)
         frame = legend.get_frame().set_alpha(0)
 
         fname = 'coloredHistogram' + name + '.png'      
         fname = os.path.join(saveDir, fname)
-        plt.savefig(fname, transparent=True, dpi=100)       
+        svg_name = 'coloredHistogram' + name + '.svg'
+        svg_name = os.path.join(saveDir, svg_name)
+        plt.savefig(fname, transparent=True, dpi=100)
+        plt.savefig(svg_name, format="svg")            
         plt.close(fig)
 
     def visualizeDistribution(self, d, A, B, labels, saveDir, filename):

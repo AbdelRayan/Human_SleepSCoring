@@ -512,6 +512,10 @@ class mcRBM:
             mask = cp.array(np.array(dd["mask"], dtype=np.float32, order='F'))
         normVF = 1
         small = 0.5
+        ### dropout
+        self.use_hidden_dropout = 1
+        self.dropout_cov = 0.3
+        self.dropout_mean = 0.15
 
         # other temporary vars
         t1 = cp.array(np.array(np.empty((self.num_hid_cov, self.batch_size)), dtype=np.float32, order='F'))
@@ -548,19 +552,19 @@ class mcRBM:
 
             # anneal learning rates as found in the original code -
             # uncomment if you wish to use annealing!
-            # ~ epsilonVFc    = epsilonVF/max(1,epoch/20)
-            # ~ epsilonFHc    = epsilonFH/max(1,epoch/20)
-            # ~ epsilonbc    = epsilonb/max(1,epoch/20)
-            # ~ epsilonw_meanc = epsilonw_mean/max(1,epoch/20)
-            # ~ epsilonb_meanc = epsilonb_mean/max(1,epoch/20)
+            epsilonVFc    = epsilonVF/max(1,epoch/20)
+            epsilonFHc    = epsilonFH/max(1,epoch/20)
+            epsilonbc    = epsilonb/max(1,epoch/20)
+            epsilonw_meanc = epsilonw_mean/max(1,epoch/20)
+            epsilonb_meanc = epsilonb_mean/max(1,epoch/20)
 
             # no annealing is used in our experiments because learning
             # was stopping too early
-            epsilonVFc = epsilonVF
-            epsilonFHc = epsilonFH
-            epsilonbc = epsilonb
-            epsilonw_meanc = epsilonw_mean
-            epsilonb_meanc = epsilonb_mean
+            # epsilonVFc = 0.1*epsilonVF
+            # epsilonFHc = 0.1*epsilonFH
+            # epsilonbc = epsilonb
+            # epsilonw_meanc = 2*epsilonw_mean
+            # epsilonb_meanc = 2*epsilonb_mean
 
             weightcost = weightcost_final
 
@@ -588,6 +592,30 @@ class mcRBM:
                 # data = dev_dat.slice(batch * self.batch_size,
                 #                      (batch + 1) * self.batch_size)  # DxP (nr dims x nr samples)
 
+                ### dropout
+                if self.use_hidden_dropout == 1:
+                    keep_cov = 1.0 - self.dropout_cov
+                    keep_mean = 1.0 - self.dropout_mean
+
+                    cov_drop = (
+                        cp.random.binomial(
+                            1, keep_cov,
+                            size=(bias_cov.size, self.batch_size),
+                            dtype=cp.float32
+                        ) / keep_cov
+                    )
+
+                    mean_drop = (
+                        cp.random.binomial(
+                            1, keep_mean,
+                            size=(bias_mean.size, self.batch_size),
+                            dtype=cp.float32
+                        ) / keep_mean
+                    )
+                else:
+                    cov_drop = 1.0
+                    mean_drop = 1.0
+
                 # normalize input data
                 t6 = data ** 2 # DxP
                 lengthsq = t6.sum(axis=0)  # 1xP
@@ -607,6 +635,8 @@ class mcRBM:
                 t1 = t1 + bias_cov[:, cp.newaxis]  # OxP
 
                 t2 = 1 / (1 + cp.exp(-t1)) # OxP
+                ### dropout
+                t2 *= cov_drop
 
                 t2 = cp.squeeze(t2)
 
@@ -627,6 +657,8 @@ class mcRBM:
                 bias_mean = bias_mean.ravel()
                 feat_mean = feat_mean + bias_mean[:, cp.newaxis]  # HxP
                 feat_mean = 1 / (1 + cp.exp(-feat_mean)) # HxP
+                ### dropout
+                feat_mean *= mean_drop
                 feat_mean = feat_mean * (-1)
 
                 w_meaninc = cp.dot(data, feat_mean.T)
@@ -664,6 +696,8 @@ class mcRBM:
                 t1 = cp.dot(FH.T, featsq) * -0.5         # OxP
                 t1 = t1 + bias_cov[:, cp.newaxis]        # add bias
                 t2 = 1 / (1 + cp.exp(-t1))               # sigmoid
+                ### dropout
+                t2 *= cov_drop
                 FHinc -= cp.dot(featsq, t2.T)            # subtract update
                 FHinc *= 0.5
 
@@ -676,6 +710,8 @@ class mcRBM:
                 # --- mean part ---
                 feat_mean = cp.dot(w_mean.T, negdata)    # HxP
                 feat_mean = 1 / (1 + cp.exp(-(feat_mean + bias_mean[:, cp.newaxis])))
+                ### dropout
+                feat_mean *= mean_drop
                 w_meaninc += cp.dot(negdata, feat_mean.T)
                 bias_meaninc += feat_mean.sum(axis=1)
 
@@ -690,6 +726,7 @@ class mcRBM:
                 VF = VF * (1.0 / t10) * normVF  # normalize columns
                 
                 bias_cov -= (epsilonbc / self.batch_size) * bias_covinc
+            
                 bias_vis -= (epsilonbc / self.batch_size) * bias_visinc
 
                 if epoch > self.startFH:
@@ -817,11 +854,8 @@ class mcRBM:
         # uncomment if computing the energy in order to store its evolution throghout training
         # ~ savemat(self.refDir + '/' + "training_energy_" + str(self.num_fac) + "_cov" + str(self.num_hid_cov) + "_mean" + str(self.num_hid_mean), {'meanEnergy':meanEnergy,'meanEnergy_test':meanEnergy_test,'maxEnergy': maxEnergy, 'maxEnergy_test': maxEnergy_test, 'minEnergy': minEnergy, 'minEnergy_test': minEnergy_test, 'epoch':epoch})
         savemat(
-            "training_energy_" + str(self.num_fac) + 
-            "_cov" + str(self.num_hid_cov) + 
-            "_mean" + str(self.num_hid_mean),
-            {'meanEnergy': meanEnergy, 'maxEnergy': maxEnergy, 'minEnergy': minEnergy, 'epoch': epoch} + 
-            ".mat")
+            "training_energy_" + str(self.num_fac) + "_cov" + str(self.num_hid_cov) + "_mean" + str(self.num_hid_mean),
+            {'meanEnergy': meanEnergy, 'maxEnergy': maxEnergy, 'minEnergy': minEnergy, 'epoch': epoch})
 
         # Compute states if desired:
         # normalise data for covariance hidden:
