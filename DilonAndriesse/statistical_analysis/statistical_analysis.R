@@ -1,3 +1,6 @@
+# ==== <-- Main category
+# ---- <-- Sub category
+
 # ==== Install packages ====
 
 ### run to install packages
@@ -71,6 +74,7 @@ avg_df <- df %>%
 str(avg_df)
 # ==== Statistical analysis per feature w.r.t. sleep states (friedman) ====
 
+# ---- DataFrame adjustments ----
 # create long data frame for statistical analysis
 complete_nights_df <- avg_df %>%
   group_by(subject_night) %>%
@@ -84,6 +88,7 @@ long_df <- complete_nights_df %>%
     values_to = "value"
   )
 
+# ---- Verify normality ----
 # check normality of data on subject level averages
 normality_results <- long_df %>%
   group_by(feature) %>%
@@ -106,6 +111,7 @@ ggplot(long_df, aes(x = value)) +
     y = "Count"
   )
 
+# ---- Friedman ----
 friedman_results <- long_df %>%
   group_by(feature) %>%
   friedman_test(value ~sleep_state | subject_night)
@@ -135,6 +141,7 @@ cat("Total subjects:", total_subjects, "\n")
 cat("Subjects kept:", kept_subjects, "\n")
 cat("Subjects removed:", removed_subjects, "\n")
 
+# ---- Eisinga test ----
 # Eisinga c.s. exact test
 feature_names <- long_df %>%
   distinct(feature) %>%
@@ -187,7 +194,7 @@ for (x in feature_names) {
   
   results_clean
   
-  # Optional: add significance stars
+  # Adds asterix's for significance
   results_clean <- results_clean %>%
     mutate(
       Significance = case_when(
@@ -197,9 +204,12 @@ for (x in feature_names) {
       TRUE               ~ ""
       )
     )
+  
+  # clean results
   results_clean <- results_clean %>%
     filter(!is.na(Test_Statistic) & !is.na(Adjusted_P))
   
+  # remap comparison names
   results_clean <- results_clean %>%
     mutate(
       Comparison1 = state_map[as.character(Comparison1)],
@@ -212,15 +222,6 @@ for (x in feature_names) {
     arrange(Comparison2, Comparison1) %>%
     mutate(Comparison = paste(Comparison2, "vs", Comparison1)) %>%
     select(Comparison, Test_Statistic, Adjusted_P, Significance)
-  
-  results_clean <- results_clean %>%
-    mutate(
-      Adjusted_P = ifelse(
-        Adjusted_P < 2.2e-16, 
-        "< 2.22e-16",
-        format(Adjusted_P, scientific = TRUE, digits = 3)
-      )
-    )
     
   # print(kable(results_clean, format = "pandoc", digits = 3, caption= glue("Eisinga c.s. exact test of {x}")))
   write.table(results_clean, file = "", sep = "\t", row.names = FALSE, quote = FALSE)
@@ -231,7 +232,7 @@ for (x in feature_names) {
 # ---- Data frame adjustments ----
 
 # create long data frame for statistical analysis
-complete_nights_df <- avg_df %>%
+complete_nights_df <- df %>%
   group_by(subject_night) %>%
   filter(n_distinct(sleep_state) == 5) %>%
   ungroup()
@@ -244,6 +245,7 @@ long_df <- complete_nights_df %>%
   )
 long_df
 
+# ---- Pairwise test ----
 results <- long_df %>%
   group_by(sleep_state) %>%
   pairwise_wilcox_test(
@@ -257,65 +259,3 @@ results <- long_df %>%
 write_tsv(results, "wilcox_results.tsv")
 
 print(results, n=Inf)
-
-
-# ---- Wake state ----
-
-# .... Main indices ....
-
-# create data frame with only wake
-w_state_df <- long_df %>%
-  filter(sleep_state == 0, feature %in% c("F1", "F2", "F3"))
-
-# Pairwise Wilcoxon signed-rank test (within-subject)
-w_state_df %>%
-  wilcox_test(value ~ feature, paired = FALSE, p.adjust.method = "holm") %>%
-  filter(group1 == 0)  # keep only comparisons where Index W is tested
-
-w_state_df
-
-
-# .... Extra indices ....
-
-
-# ------ N1 state ------
-# ------ N2 state ------
-# ------ N3 state ------
-# ------ REM state ------
-# ---- Statistical analysis distribution of features within sleep states ----
-# install.packages("vegan")
-library(vegan)
-
-df <- df %>%
-  filter(sleep_state %in% 0:4) %>%
-  group_by(subject_night, sleep_state)
-
-# create long data frame for statistical analysis
-complete_nights_df <- df %>%
-  group_by(subject_night) %>%
-  filter(n_distinct(sleep_state) == 5) %>%
-  ungroup()
-
-set.seed(42)
-
-df_subset <- complete_nights_df %>%
-  group_by(subject_night, sleep_state) %>%
-  slice_sample(n = 100) %>%
-  ungroup()
-
-# Example for one sleep state
-state_df <- df_subset %>%
-  filter(sleep_state == 0)
-
-state_df
-
-# Remove identifiers
-feature_matrix <- state_df %>%
-  select(-subject_night)
-
-# Optional but recommended
-feature_matrix <- scale(feature_matrix)
-
-adonis2(feature_matrix ~ sleep_state, method = "bray", data = state_df, na.rm=TRUE)
-
-
