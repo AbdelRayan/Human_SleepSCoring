@@ -13,10 +13,26 @@ The repository url can be found in the main GIT page, under the "Code" tab.
     git -clone <repository_url>
     
 ### 2. Install dependencies
-    (create conda environment file and add the instruction to create new conda environment here)
+The following command can be run in to recreate the conda environment required to run all scripts.
+
+    conda env create -f environment_minimal.yml
 
 ## Usage
 Base explanation of the script needed to get from .EDF files to inferred latent states. A more in depth view of the different scripts can be found in their corresponding directories.
+
+Scripts that need to manually be run:
+
+    *pre_processing/egi_to_edf.ipynb
+    pre_processing/extract_data_edf.ipynb
+    hdf5_files/create_hdf5.ipynb
+    hdf5_files/dataset_extraction.ipynb
+    mcRBM/sample_data/mcRBM_input_features.ipynb
+    mcRBM/run_model/train_model.ipynb
+    mcRBM/run_model/infer_states_test.ipynb
+    mcRBM/run_model/latent_states_analysis.ipynb
+
+_* -This file is only required if the dataset is in EGI format_
+
 ### 0. General
 Most Jupyter Notebook scripts (except for visualize_data.ipynb) contain cells near the top in the following formats:
 
@@ -35,11 +51,11 @@ Most Jupyter Notebook scripts (except for visualize_data.ipynb) contain cells ne
 These cells are where you can manually adjust the paths to the required files and set your own custom variables for each of the scripts.
 
 ### 1. Pre-processing
-If you have EEG data available in EDF format skip step "0. Convert EGI to EDF".
+If you have EEG data available in EDF format skip "egi_to_edf.ipynb". Otherwise see pre-processing README for more information.
 
 From the "pre_processing" directory run, "extract_data_edf.ipynb" to extract all required data from .EDF files into .mat files that are required for feature computation.
 
-### 3. HDF5 creation
+### 2. HDF5 creation
 From the "hdf5_files" directory, run the "create_hdf5.ipynb" script to create a hdf5 file from your collection of .mat files. 
 
 To create data that can be used for machine learning, run the "dataset_extraction.ipynb" script. This creates both a training and testing dataset within their specific folders as such: 
@@ -56,7 +72,7 @@ To create data that can be used for machine learning, run the "dataset_extractio
 
 Make sure these files end up under "mcRBM/sample_data/input/{category_name}/".
 
-### 4. mcRBM
+### 3. mcRBM
 Config files for the mcRBM model can be found under "mcRBM/configuration_files/".
 Within exp_details and exp_details, adjust the paths to your current setup and give the model a name. Make sure to use the training data for exp_details and the testing data for exp_details_test.
 
