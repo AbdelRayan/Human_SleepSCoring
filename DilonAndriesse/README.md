@@ -18,7 +18,7 @@ The repository URL can be found in the main GIT page called "Human_SleepSCoring"
 The following commands can be run to recreate the conda environment required to run all scripts.
 
     cd Human_SleepSCoring/DilonAndriesse
-    conda env create -f environment_minimal.yml
+    conda env create -f env.yml
 
 ## Usage
 General workflow required to pre-process the data, create the dataset, train the model and infer latent states.
