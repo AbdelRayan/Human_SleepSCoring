@@ -103,7 +103,7 @@ Requirements:
 From the _"hdf5_files"_ directory, run the _"create_hdf5.ipynb"_ script to create a hdf5 file from your collection of .mat files. After adjusting the paths you can press run all to run the script. 
 
 #### 2.2 _dataset_extraction.ipynb_
-From this HDF5 file a training and testing dataset will be extracted to be used for machine learning. This will create a upsampled dataset by resampling.
+From this HDF5 file a training and testing dataset will be extracted to be used for machine learning. This will create a upsampled dataset by resampling. Within the _"mcRBM/sample_data"_ you need to create two directories, _"input"_ and _"experiments"_.
 
 Default parameters:
 - **dataset_name** <- name of dataset to save the training and testing data to
