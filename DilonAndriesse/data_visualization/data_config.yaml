@@ -1,0 +1,23 @@
+### Configuration file for input data visualization
+
+paths:
+  # general data path
+  data: 'C:/Users/andri/school/bio-informatics/internship/donders/data/human_test_data'
+  # path to raw psg.edf
+  raw: 'pre_processing/input/raw_input'
+  # path to raw hypnogram.edf
+  anno: 'pre_processing/input/annotation_raw'
+  # path to bandpower output
+  bandpower: 'pre_processing/bandpower'
+  # path to data visualization
+  data_vis: 'visualizations/data_visualizations'
+
+variables:
+  # epoch (s)
+  epoch: 10
+  # amount of time to save before and after first and last sleep
+  wake_time: 1800
+  # channels to use
+  channels: ["Fpz-Cz", "Pz-Oz", "horizontal", "submental"]
+  # subject to use for visualization
+  subject: "S35_1"
