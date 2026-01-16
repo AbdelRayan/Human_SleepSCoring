@@ -1,0 +1,28 @@
+### Configuration file used for all visualization scripts
+
+paths:
+  # general data path
+  data: 'C:/Users/andri/school/bio-informatics/internship/donders/data/human_test_data'
+  # input folder
+  mat: 'D:\dilon_data\mat_collection\complete-dataset_no-high-pass_static_no-artefact-removal'
+  # path for visualization
+  feature_vis: 'visualizations/feature_visualization'
+
+variables:
+  # subject to use for visualization
+  subject: "S35_1"
+  # category of feature visualization
+  category: 'main'
+  # sampling frequency
+  fs: 250
+  # epoch (s)
+  epoch: 10
+  # low pass
+  upper_mask_freq: 50
+  #high_pass
+  lower_mask_freq: 1
+  # amount of time to save before and after first and last sleep
+  wake_time: 1800
+
+  # sleep ids and corresponding labels
+  sleep_labels: {0: 'Wake', 1: 'N1', 2: 'N2', 3: 'N3', 4: 'REM', 5: "Movement", 6: "Unknown"}
