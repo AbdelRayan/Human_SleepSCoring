@@ -58,3 +58,19 @@ To visualize the features originated form the rodent research run the "adjusted_
 
 ## _"Complexity_Analysis.ipynb"_
 To visualize the newly introduced features run the "Complexity_analysis.ipynb" script. For this script the EEG channel .mat file path and state file path must be manually changed in the Notebook at the following two variables: _"fpz"_ and _"states"_.
+
+## _"feature_quality_control"_
+This Notebook has its own built-in paths and variables and does not use the configuration files.
+
+Parameters:
+- **epoch_length** <- length of epochs
+- **fs** <- sampling frequency
+- **feature_indices** <- list of features indices (0 through 13)
+- **file_id** <- additional file name identifier
+- **title_id** <- additional title identifier
+
+Paths:
+- **h5_file** <- path to HDF5 file to visualize
+- **output** <- path to save visualizations to
+
+Main goal of this script is to visualize data of the complete dataset.
