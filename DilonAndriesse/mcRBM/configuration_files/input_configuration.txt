@@ -31,7 +31,7 @@ apply_mask = 0
 
 [OPTIMIZER_PARAMETERS]
 # learning rate 
-epsilon = .01
+epsilon = .0001
 # L1 weight decay
 weightcost_final = 0.001
 

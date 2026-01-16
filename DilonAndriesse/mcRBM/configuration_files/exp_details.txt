@@ -9,11 +9,11 @@ npRandState = 123
 [EXP_DETAILS]
 
 # set the path to the directory where the data have been stored:
-dsetDir = /content/drive/MyDrive/Colab Notebooks/mcRBM/sample_data/input/
+dsetDir = /content/drive/MyDrive/Colab Notebooks/mcRBM/sample_data/input/training/
 
 # set the name of the dataset to be analysed:
 # it can be a .mat or a .npz file (see sample-data)
-dSetName = Features.npz
+dSetName = features.npz
 
 # set the name of the states file:
 # it needs to be a .mat file
