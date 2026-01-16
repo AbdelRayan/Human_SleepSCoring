@@ -128,7 +128,7 @@ def getNewFeatures(raw_fpz, raw_pz, raw_emg, raw_eog, states, fs, epoch_length):
   index_4_smoothed = np.convolve(np.convolve(np.convolve(index_4_norm, np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same'), np.ones(5)/5, mode='same')
 
   window_size = epoch_length * fs
-  aperiodic = calc_aperiodic_fit(raw_fpz, window_size, epoch_length, fs)
+  aperiodic = calc_aperiodic_fit(raw_fpz, window_size, fs)
   aperiodic = np.array(aperiodic)
   aperiodic_norm = wei_normalizing(aperiodic)
   # aperiodic_norm = np.log(aperiodic)
