@@ -9,6 +9,6 @@ In order, the repositories used should be:
 
 2- mcRBM
 
-3- StateInferrence
+3- StateInferrence (untested)
 
-4- FurtherAnalysis
+4- FurtherAnalysis (untested)

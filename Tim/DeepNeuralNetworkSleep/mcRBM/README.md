@@ -3,14 +3,9 @@
 ## Prerequisite
 A CUDA-enabled GPU machine. This means having NVCC toolbox installed on an NVIDIA GPU.
 
-## Setup
-
-1. Run `setup.sh` to install neccessary python packages.
-(It is possible that you get an error, but the next steps still work as long as you manage to run `cudamat_example.ipynb`).
-2. Run `cudamat_example.ipynb` to verify cudamat installation, cudamat provides an interface to perform matrix calculations on CUDA-enabled GPUs.
-
 ## Preprocess data
 Add feature file to `sample_data/input/` dir. The feature file should be of the following format.
+This is done automatically when you run `dataset_creation.ipynb`.
 
 ### Bands
 NxM data array, where N is the number of epochs, and columns refer to Delta PFC, Theta HPC etc.
@@ -34,17 +29,6 @@ Nx3 data array, where N is the number of epochs, and columns are described as fo
   - 1 is associated with baseline,
   - 2 is associated with recovery (after sleep deprivation)
 - column 3: the epoch date-time
-
-## Converting your file in the right format
-If your feature file is not in the above format, use `mcRBM_input_features.ipynb` in `sample_data/` dir to generate the feature file (`.npz`) needed as input for the model.
-
-To do that, you can modify 5 variables :
-- **data_path** : the file path which will usually be : 
-`/teamspace/studios/this_studio/mouse-sleep-analysis/sample_data/input`
-- **feature_npy_file_name** : the name of your npy file containing the features for each epochs
-- **feature_npz_file_name** : the name of the npz file you want to obtain (usually same name as the npy file)
-- **states_file_name** : the name of your mat file containing the manual scoring for each epoch
-  
 
 ## Configuration
 For the next steps, we differenciate two cases : 
