@@ -15,11 +15,11 @@ Nx4 data array, where N is the number of epochs, and columns are described as fo
 - column 1: epoch ID
 - column 2: epoch index (currently not used)
 - column 3: ground truth sleep stage ID, where
-  - 0 is associated with artefacts,
-  - 1 is associated with wakefulness,
-  - 3 is associated with NREM sleep,
-  - 4 is associated with TS (intermediate) sleep,
-  - 5 is associated with REM sleep
+  - 0 is associated with Wakefulness,
+  - 1 is associated with N1,
+  - 2 is associated with N2,
+  - 3 is associated with N3,
+  - 4 is associated with REM sleep
 - column 4: the subject ID (used in multi-subject analysis only)
 
 ### EpochTime
@@ -31,7 +31,7 @@ Nx3 data array, where N is the number of epochs, and columns are described as fo
 - column 3: the epoch date-time
 
 ## Configuration
-For the next steps, we differenciate two cases : 
+For the next steps, we differentiate two cases : 
 1. Training Dataset : if you want to create a model trained on your dataset
 2. Test Dataset : if you want to run an existing model on your dataset
 
