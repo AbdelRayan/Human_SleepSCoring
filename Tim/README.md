@@ -61,7 +61,7 @@ Converts all previously generated features into a unified **HDF5 dataset**
 **Notebook:**  
 `dataset_creation.ipynb`
 
-This step assembles the final dataset used for model training.
+This step sets up the dataset for the mcRBM
 
 ---
 
@@ -70,20 +70,60 @@ This step assembles the final dataset used for model training.
 **Notebook:**  
 `DeepNeuralNetworkSleep/mcRBM/sample_data/mcRBM_input_features.ipynb`
 
-If you plan to use the mcRBM model included in the repository, run this notebook.
+This step separates creates a training and test dataset for training and using the model.
 
 ---
+
+## 7. Train the mcRBM
+
+**Notebook:**  
+`DeepNeuralNetworkSleep/mcRBM/run_model/train_model.ipynb`
+
+This scripts allows for the training of the network, by default it's set up to run using Google CoLab.
+Use 
+`DeepNeuralNetworkSleep/mcRBM/configuration_files/exp_details`
+and
+`DeepNeuralNetworkSleep/mcRBM/configuration_files/input_configuration`
+to configure the training process
+
+---
+
+## 8. Infer states using a trained model
+
+**Notebook:**  
+`DeepNeuralNetworkSleep/mcRBM/run_model/infer_states_test.ipynb`
+
+After training, this notebook can be used to infer latent states in the test dataset.
+
+Use
+`DeepNeuralNetworkSleep/mcRBM/configuration_files/exp_details_test`
+to configure the inference.
+
+---
+
+## 9. Analyse inferred latent states
+
+**Notebook:**  
+`DeepNeuralNetworkSleep/mcRBM/run_model/latent_states_analysis.ipynb`
+
+After inference, this notebook can be used to analyse the latent states as the final step.
+
+
+---
+
 
 # Summary Workflow
 
 ```
-Raw Data
-   → (Optional) Convert ASCII → Filter → Downsample
-   → (Optional) Convert to EDF → Score with U-Sleep
-   → Extract Features
-   → Build HDF5 Files
-   → Create Training Dataset
-   → Prepare mcRBM Input Data
+→ Convert ASCII → Filter → Downsample
+→ Convert to EDF → Score with U-Sleep
+→ Extract Features
+→ Build HDF5 Files
+→ Create Training Dataset
+→ Prepare mcRBM Input Data
+→ Train the network
+→ Infer latent states
+→ Analyse latent states
 ```
 
 ## References
