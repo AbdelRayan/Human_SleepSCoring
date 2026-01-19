@@ -27,37 +27,38 @@ def training_dataset(file_path, n_states, n_repeat_states, subjects):
 
     array_scores_total = np.array([])
     array_features_total = np.empty((0, 13))
-    indices_artefact_total = np.array([])
     indices_wake_total = np.array([])
-    indices_nrem_total = np.array([])
-    indices_TS_total = np.array([])
+    indices_n1_total = np.array([])
+    indices_n2_total = np.array([])
+    indices_n3_total = np.array([])
     indices_rem_total = np.array([])
     with h5py.File(file_path, 'r') as hdf:
         for group_name in hdf.keys():
-            group = hdf[group_name]
-            array_scores = np.array([])
-            array_features = np.empty((0, 13))
-            array_scores = np.concatenate((array_scores, group['Mapped_scores'][:]), axis=0)
-            array_features = np.concatenate((array_features, group['Features'][:]), axis=0)
-            indices_wake = np.where(array_scores == 0)[0]  # Artefact
-            indices_n1 = np.where(array_scores == 1)[0]  # Wake
-            indices_n2 = np.where(array_scores == 2)[0]  # NREM
-            indices_n3 = np.where(array_scores == 3)[0]  # TS
-            indices_rem = np.where(array_scores == 4)[0]  # REM
-            len_scores = len(array_scores_total)
+            if group_name in subjects:
+                group = hdf[group_name]
+                array_scores = np.array([])
+                array_features = np.empty((0, 13))
+                array_scores = np.concatenate((array_scores, group['Mapped_scores'][:]), axis=0)
+                array_features = np.concatenate((array_features, group['Features'][:]), axis=0)
+                indices_wake = np.where(array_scores == 0)[0]  # Artefact
+                indices_n1 = np.where(array_scores == 1)[0]  # Wake
+                indices_n2 = np.where(array_scores == 2)[0]  # NREM
+                indices_n3 = np.where(array_scores == 3)[0]  # TS
+                indices_rem = np.where(array_scores == 4)[0]  # REM
+                len_scores = len(array_scores_total)
 
-            array_scores_total = np.concatenate((array_scores_total, array_scores), axis=0)
-            array_features_total = np.concatenate((array_features_total, array_features), axis=0)
-            indices_wake = np.array([el + len_scores for el in indices_wake])
-            indices_n1 = np.array([el + len_scores for el in indices_n1])
-            indices_n2 = np.array([el + len_scores for el in indices_n2])
-            indices_n3 = np.array([el + len_scores for el in indices_n3])
-            indices_rem = np.array([el + len_scores for el in indices_rem])
-            indices_wake_total = np.concatenate((indices_artefact_total, indices_wake), axis=0)
-            indices_n1_total = np.concatenate((indices_wake_total, indices_n1), axis=0)
-            indices_n2_total = np.concatenate((indices_nrem_total, indices_n2), axis=0)
-            indices_n3_total = np.concatenate((indices_TS_total, indices_n3), axis=0)
-            indices_rem_total = np.concatenate((indices_rem_total, indices_rem), axis=0)
+                array_scores_total = np.concatenate((array_scores_total, array_scores), axis=0)
+                array_features_total = np.concatenate((array_features_total, array_features), axis=0)
+                indices_wake = np.array([el + len_scores for el in indices_wake])
+                indices_n1 = np.array([el + len_scores for el in indices_n1])
+                indices_n2 = np.array([el + len_scores for el in indices_n2])
+                indices_n3 = np.array([el + len_scores for el in indices_n3])
+                indices_rem = np.array([el + len_scores for el in indices_rem])
+                indices_wake_total = np.concatenate((indices_wake_total, indices_wake), axis=0)
+                indices_n1_total = np.concatenate((indices_n1_total, indices_n1), axis=0)
+                indices_n2_total = np.concatenate((indices_n2_total, indices_n2), axis=0)
+                indices_n3_total = np.concatenate((indices_n3_total, indices_n3), axis=0)
+                indices_rem_total = np.concatenate((indices_rem_total, indices_rem), axis=0)
 
     selected_indices_wake = random.sample(list(indices_wake_total), n_wake)
     selected_indices_n1 = random.sample(list(indices_n1_total), n_n1)

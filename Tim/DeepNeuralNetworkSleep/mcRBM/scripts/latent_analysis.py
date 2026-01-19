@@ -31,7 +31,7 @@ class StatesAnalysis(object):
     '''
     
     def __init__(self, refDir, expConfigFilename, epochID, threshold, multi, norm, features, groupNames):
-        # directory containing all the configuration files for the experiment
+        # directory containing all the files for the experiment
         self.refDir = refDir
         # file with configuration details for the launched experiment
         self.expConfigFilename = expConfigFilename
@@ -71,6 +71,7 @@ class StatesAnalysis(object):
         '''
         
         config = ConfigParser()
+        print(self.refDir + "configuration_files/" + self.expConfigFilename)
         config.read(self.refDir + "configuration_files/" + self.expConfigFilename)
                 
         #-- Experiment details:        
@@ -110,7 +111,7 @@ class StatesAnalysis(object):
         obsKeys = dataFile['obsKeys'].astype(int)
         self.epochTime = dataFile['epochTime']
 
-        self.sleepStages = ['Wake', 'NREM', 'REM']
+        self.sleepStages = ['Wake', 'N1', 'N2', 'N3', 'REM']
 
         """
         Back-project data to the log space for visualization
@@ -182,7 +183,7 @@ class StatesAnalysis(object):
             return int(binary_string, 2)
 
         # Move in the current training epoch's folder       
-        os.chdir('analysis/epoch%d' %self.epochID)  
+        os.chdir('analysis/epoch%d' %self.epochID)
         # Get current path:
         os.getcwd()
 
@@ -221,7 +222,8 @@ class StatesAnalysis(object):
 
         #labels = ['f%s' %i for i in range(self.d.shape[1])]
         # EEG_labels = ['Theta', 'Delta', 'Ratio', 'Slope', 'Complexity']
-        EEG_labels = ['', 'IndexW', 'IndexR', 'IndexN', 'Index1', 'Index2', 'Index3', 'Index4', '0-0.5hz', 'Theta', 'Delta']
+        EEG_labels = ['', 'IndexW', 'IndexR', 'IndexN', 'Index1', 'Index2', 'Index3', 'Index4', '0-0.5hz', 'Theta', 'Delta',
+                      'Aperiodic_fit', "DFA", "MSE"]
         # EEG_labels = ['IndexW', 'IndexR', 'IndexN', 'Index1', 'Index2', 'Index3', 'Index4', 'Theta', 'Delta']
         
         # if self.features=='bands':
@@ -237,16 +239,18 @@ class StatesAnalysis(object):
 
         EEG_range = [math.floor(self.dinit[:,:self.dinit.shape[1]-1].min()), math.ceil(self.dinit[:,:self.dinit.shape[1]-1].max())]
         print("self.uniqueStates :", self.uniqueStates)
-        all_latent_states = np.empty((len(self.uniqueStates[:, 0]), 14))
+        all_latent_states = np.empty((len(self.uniqueStates[:, 0]), 19))
         for i in self.uniqueStates[:, 0]:
             id_bin = self.uniqueStates[i,13:]
             print("id_bin :", id_bin)
             idx = np.where( self.obsKeys[:, 1] == i )[0]            
             latent_frames = self.obsKeys[idx, :]
 
-            length_awake = round((len(np.where((latent_frames[:,3]==1))[0])/float(len(latent_frames))),3)
-            length_nrem = round((len(np.where((latent_frames[:,3]==3))[0])/float(len(latent_frames))),3)
-            length_rem = round((len(np.where((latent_frames[:,3]==5))[0])/float(len(latent_frames))),3)
+            length_awake = round((len(np.where((latent_frames[:,3]==0))[0])/float(len(latent_frames))),3)
+            length_n1 = round((len(np.where((latent_frames[:,3]==1))[0])/float(len(latent_frames))),3)
+            length_n2 = round((len(np.where((latent_frames[:, 3] == 2))[0]) / float(len(latent_frames))), 3)
+            length_n3 = round((len(np.where((latent_frames[:, 3] == 3))[0]) / float(len(latent_frames))), 3)
+            length_rem = round((len(np.where((latent_frames[:,3]==4))[0])/float(len(latent_frames))),3)
 
             #dPlot = [self.d[idx, j] for j in range(self.d.shape[1])]
             # print(f"self.dinit: {self.dinit}")
@@ -260,11 +264,13 @@ class StatesAnalysis(object):
             print(f"np.shape(dPlotEEG): {np.shape(dPlotEEG)}")
             # visualize boxplots per latent state
             self.BoxPlotsSimple(dPlotEEG, './boxPlotsBackProjectedData/', len(idx), i, EEG_labels, 
-                                        length_awake, length_nrem, length_rem, [0, 1], id_bin)
+                                        length_awake, length_n1, length_n2, length_n3, length_rem, [0, 1], id_bin)
             dPlotEEGextended = list(map(mean, dPlotEEG))
             dPlotEEGextended.append(binary_to_decimal(id_bin))
             dPlotEEGextended = np.append(dPlotEEGextended, length_awake)
-            dPlotEEGextended = np.append(dPlotEEGextended, length_nrem)
+            dPlotEEGextended = np.append(dPlotEEGextended, length_n1)
+            dPlotEEGextended = np.append(dPlotEEGextended, length_n2)
+            dPlotEEGextended = np.append(dPlotEEGextended, length_n3)
             dPlotEEGextended = np.append(dPlotEEGextended, length_rem)
             all_latent_states[i] = dPlotEEGextended
         np.save("all_latent_states.npy", all_latent_states)
@@ -387,9 +393,13 @@ class StatesAnalysis(object):
             """
             latent_frames = self.obsKeys[np.where(self.obsKeys[:, 1] == lstate)[0], :]
 
-            length_awake = round((len(np.where((latent_frames[:, latent_frames.shape[1]-3]==1))[0])/float(len(latent_frames))),3)
-            length_nrem = round((len(np.where((latent_frames[:, latent_frames.shape[1]-3]==3))[0])/float(len(latent_frames))),3)
-            length_rem = round((len(np.where((latent_frames[:, latent_frames.shape[1]-3]==5))[0])/float(len(latent_frames))),3)
+            length_awake = round((len(np.where((latent_frames[:, latent_frames.shape[1]-3]==0))[0])/float(len(latent_frames))),3)
+            length_n1 = round((len(np.where((latent_frames[:, latent_frames.shape[1]-3]==1))[0])/float(len(latent_frames))),3)
+            length_n2 = round(
+                (len(np.where((latent_frames[:, latent_frames.shape[1] - 3] == 2))[0]) / float(len(latent_frames))), 3)
+            length_n3 = round(
+                (len(np.where((latent_frames[:, latent_frames.shape[1] - 3] == 3))[0]) / float(len(latent_frames))), 3)
+            length_rem = round((len(np.where((latent_frames[:, latent_frames.shape[1]-3]==4))[0])/float(len(latent_frames))),3)
 
             '''
             Initialize subjects' counts to 0:
@@ -474,7 +484,12 @@ class StatesAnalysis(object):
             fig = plt.figure(figsize=(20,15))
             ax1 = fig.add_subplot(111)
             #fig.suptitle('Number of epochs associated with this latent state: ' + str(len(latent_frames)) + '\nAwake: ' + str(length_awake*100) + '%, Nrem: ' + str(length_nrem*100) + '%, Rem: ' + str(length_rem*100) + '%', fontsize=30, fontweight='bold')
-            fig.suptitle('Latent State ' + str(lstate) + '\nWakefulness: ' + str(round(length_awake,3)*100) + '%, NREM Sleep: ' + str(round(length_nrem,3)*100) + '%, REM Sleep: ' + str(round(length_rem,3)*100) + '%' + '\nTotal number of epochs: ' + str(len(latent_frames)), fontsize=30, fontweight='bold')
+            fig.suptitle('Latent State ' + str(lstate) +
+                         '\nWakefulness: ' + str(round(length_awake,3)*100) +
+                         '%, N1 Sleep: ' + str(round(length_n1,3)*100) + '%, N2 Sleep: ' + str(round(length_n2,3)*100) +
+                         '%, N3 Sleep: ' + str(round(length_n3, 3) * 100) +
+                         '%, REM Sleep: ' + str(round(length_rem,3)*100) + '%' +
+                         '\nTotal number of epochs: ' + str(len(latent_frames)), fontsize=30, fontweight='bold')
 
             ax1.spines['top'].set_visible(False)
             #ax.spines['top'].set_color('none')
@@ -521,9 +536,9 @@ class StatesAnalysis(object):
 
             ax1.set_yticklabels(ax1.get_yticks(), fontweight='bold', fontsize=20)           
 
-            fname = 'lState_' + str(lstate) + '.png'
+            fname = 'lState_' + str(lstate) + '.svg'
             fname = os.path.join('./barPlots/', fname)
-            fig.savefig(fname, transparent=True, dpi=100)
+            fig.savefig(fname, format='svg')
             plt.close(fig)
 
 
@@ -571,9 +586,9 @@ class StatesAnalysis(object):
                 l.set_weight("bold")
                 l.set_fontsize(40)
 
-            fname = 'lState_' + str(lstate) + '.png'
+            fname = 'lState_' + str(lstate) + '.svg'
             fname = os.path.join('./ttest/', fname)
-            fig.savefig(fname, transparent=True, dpi=100)
+            fig.savefig(fname, format='svg')
             plt.close(fig)
 
             """
@@ -584,7 +599,10 @@ class StatesAnalysis(object):
                 data_to_plot.append(strainsDistr_dict[k][:, lstate]/self.lstatesPopulation[lstate])
 
             fig = plt.figure(figsize=(15,12))
-            fig.suptitle('LS ' + str(lstate) + ' - Total: ' + str(len(latent_frames)) + ' epochs' + '\nWAKE: ' + str(length_awake*100) + '%, NREM: ' + str(length_nrem*100) + '%, REM: ' + str(length_rem*100) + '%', fontsize=35, fontweight='bold')
+            fig.suptitle('LS ' + str(lstate) + ' - Total: ' + str(len(latent_frames)) +
+                         ' epochs' + '\nWAKE: ' + str(length_awake*100) +
+                         '%, N1: ' + str(length_n1*100) + '%, N2: ' + str(length_n2*100) + '%, N3: ' + str(length_n3*100) +
+                         '%, REM: ' + str(length_rem*100) + '%', fontsize=35, fontweight='bold')
 
             ax = fig.add_subplot(111)
             ax.grid(False)
@@ -625,9 +643,9 @@ class StatesAnalysis(object):
 
             ax.set_yticklabels(ax.get_yticks(), fontweight='bold', fontsize=30)
 
-            fname = 'lstate%d.jpeg' %lstate
+            fname = 'lstate%d.svg' %lstate
             fname = os.path.join('./groupBoxPlots/', fname)
-            fig.savefig(fname, format='jpeg', transparent=True, dpi=100)
+            fig.savefig(fname, format='svg')
             plt.close(fig)
 
 
@@ -644,7 +662,9 @@ class StatesAnalysis(object):
         Set features' labels for visualization part
         """     
         self.visibleFeatures = ['v%d' %(i+1) for i in range(self.d.shape[1])]
-        self.initFeatures = ['IndexW', 'IndexR', 'IndexN', 'Index1', 'Index2', 'Index3', 'Index4', '0-0.5hz', 'Theta', 'Delta']
+        self.initFeatures = ['IndexW', 'IndexR', 'IndexN', 'Index1', 'Index2',
+                             'Index3', 'Index4', '0-0.5hz', 'Theta', 'Delta',
+                             'Aperiodic_Fit', "DFA", "MSE"]
 
         # if self.features=='bands':
         #     self.initFeatures = ['Delta', 'Theta', 'Delta/Theta', 'EMG']
@@ -732,7 +752,7 @@ class StatesAnalysis(object):
 
         """
         Compute each latent state's PDF according to how many epochs 
-        were manually labeled as Wakefulness, NREM, REM. This can be
+        were manually labeled as Wakefulness, N1, N2, N3 REM. This can be
         visualized with an RGB color shade.
         """ 
 
@@ -742,7 +762,7 @@ class StatesAnalysis(object):
         #-- Re-order matrix for Visualization:
         self.C1 = self.reorderMat(self.lstateColor)
         #-- Visualize array:
-        column_labels = ['Wakefulness', 'NREM', 'REM']
+        column_labels = ['Wakefulness', 'N1', 'N2', 'N3', 'REM']
         self.displayMat(self.lstateColor[self.C1, :], column_labels, './heatMap/heatMap')
 
         #--- Remove the singleton Latent-states:
@@ -926,12 +946,16 @@ class StatesAnalysis(object):
         with open ('./entropyMI/mutualInformation.txt','a') as f:
             f.write("\n Stage Entropy:")
             f.write("\n Wakefulness = %s" %stagesH[0])
-            f.write("\n NREM = %s" %stagesH[1])
-            f.write("\n REM = %s\n" %stagesH[2])
+            f.write("\n N1 = %s" %stagesH[1])
+            f.write("\n N2 = %s" % stagesH[2])
+            f.write("\n N3 = %s" % stagesH[3])
+            f.write("\n REM = %s\n" %stagesH[4])
             f.write("\n Stage Normalized MI:")
             f.write("\n The MI/H(wake) = %s" %(MI_stage[0]/stagesH[0]))
-            f.write("\n The MI/H(nrem) = %s" %(MI_stage[1]/stagesH[1]))
-            f.write("\n The MI/H(rem) = %s\n" %(MI_stage[2]/stagesH[2]))
+            f.write("\n The MI/H(n1) = %s" %(MI_stage[1]/stagesH[1]))
+            f.write("\n The MI/H(n2) = %s" % (MI_stage[1] / stagesH[2]))
+            f.write("\n The MI/H(n3) = %s" % (MI_stage[1] / stagesH[3]))
+            f.write("\n The MI/H(rem) = %s\n" %(MI_stage[2]/stagesH[4]))
             f.write("\n Overall Normalized MI:")
             f.write("\n The MI/H(Stage) = %s" %(MI/Hx))
             f.close()
@@ -1023,7 +1047,7 @@ class StatesAnalysis(object):
 
     def stageEntropy(self, Count, tetFile):
         '''
-        Random variable = stage (wake, nrem, rem)
+        Random variable = stage (wake, n1, n2, n3, rem)
 
         Computes the Entropy: 
             H(stage) = -sum_over_stages(p(si)*log2(p(si)))
@@ -1087,13 +1111,16 @@ class StatesAnalysis(object):
             lstatePopulation = len(obsKeys)
 
             # find the per class samples :          
-            length_awake = len(np.where(obsKeys[:, columnStage]==1)[0])         
-            length_nrem = len(np.where(obsKeys[:, columnStage]==3)[0])          
-            length_rem = len(np.where(obsKeys[:, columnStage]==5)[0])
+            length_awake = len(np.where(obsKeys[:, columnStage]==0)[0])
+            length_n1 = len(np.where(obsKeys[:, columnStage]==1)[0])
+            length_n2 = len(np.where(obsKeys[:, columnStage] == 2)[0])
+            length_n3 = len(np.where(obsKeys[:, columnStage] == 3)[0])
+            length_rem = len(np.where(obsKeys[:, columnStage]==4)[0])
 
-            vec_len = (length_awake/lstatePopulation, length_nrem/lstatePopulation, length_rem/lstatePopulation)
+            vec_len = (length_awake/lstatePopulation, length_n1/lstatePopulation, length_n2/lstatePopulation,
+                       length_n3/lstatePopulation, length_rem/lstatePopulation)
             latent_color.append(vec_len)
-            counts.append([length_awake, length_nrem, length_rem])
+            counts.append([length_awake, length_n1, length_n2, length_n3, length_rem])
         return np.asarray(latent_color), np.asarray(counts)
 
     def prototypesHistogram(self):
@@ -1256,9 +1283,9 @@ class StatesAnalysis(object):
 
         # ax1.set_yticklabels(ax1.get_yticks(), fontweight='bold', fontsize=30)
 
-        filename = 'lStatesHistogram.png'
+        filename = 'lStatesHistogram.svg'
         filename = os.path.join('./statesHistogram/', filename)
-        f1.savefig(filename)
+        f1.savefig(filename, format='svg')
 
     # Function for dispaying an array
     def displayMat(self, matrixToDisplay, column_labels, filename):
@@ -1303,7 +1330,7 @@ class StatesAnalysis(object):
             l.set_weight("bold")
             l.set_fontsize(15)
 
-        fig.savefig(filename + '.jpeg', format='jpeg', transparent=True, dpi=100)
+        fig.savefig(filename + '.svg', format='svg')
         print("filename :", filename)
 
         plt.close(fig)
@@ -1326,9 +1353,9 @@ class StatesAnalysis(object):
 
         plt.xlim(0, A.shape[0])
         plt.ylim(0, A.shape[1])
-        f1.savefig(filename + '.png', transparent=True, dpi=100)
+        f1.savefig(filename + '.svg', format='svg')
 
-    def BoxPlotsSimple(self, d_to_plot_1, fig_path, population, i, labels_1, length_awake, length_nrem, length_rem, range_1, id_bin):
+    def BoxPlotsSimple(self, d_to_plot_1, fig_path, population, i, labels_1, length_awake, length_n1, length_n2, length_n3, length_rem, range_1, id_bin):
         '''
         Method visualizing the boxplots of the LOG initial EEG
         data mapping to eacch latent state.
@@ -1343,7 +1370,9 @@ class StatesAnalysis(object):
         fig, ax1 = plt.subplots(figsize=(15, 10), constrained_layout=True)        
         id_dec_bin = binary_to_decimal(id_bin)
         plt.title(f'LS {i}_{id_dec_bin} - Total: {population} epochs\n'
-             f'WAKE: {length_awake*100:.1f}%, NREM: {length_nrem*100:.1f}%, REM: {length_rem*100:.1f}%',
+             f'WAKE: {length_awake*100:.1f}%, N1: {length_n1*100:.1f}%, '
+                  f'N2: {length_n2*100:.1f}%, N3: {length_n3*100:.1f}%,'
+                  f' REM: {length_rem*100:.1f}%',
              y=1.001, fontsize=35, fontweight='bold')
         #
         print(f"ax1.get_xticks(): {ax1.get_xticks()}")
@@ -1391,9 +1420,9 @@ class StatesAnalysis(object):
                  linewidth=2.)            # line thickness
 
 
-        fname = 'lstate%d_%d.jpeg' %(i, id_dec_bin)
+        fname = 'lstate%d_%d.svg' %(i, id_dec_bin)
         fname = os.path.join(fig_path, fname)
-        fig.savefig(fname, format='jpeg', transparent=True, dpi=100)
+        fig.savefig(fname, format='svg')
         plt.close(fig)
 
     def MI_stimulusH_barPlot(self, MI_stage, stagesH, overAll, saveDir):
@@ -1424,8 +1453,12 @@ class StatesAnalysis(object):
         bar_width = 0.43
 
         ax1.bar(ind, MI_stage[0]/stagesH[0], bar_width, color=colors[9]['color'], edgecolor = "none", label="Wakefulness")
-        ax1.bar(ind+width, MI_stage[1]/stagesH[1], bar_width, color=colors[8]['color'], edgecolor = "none", label="NREM")
-        ax1.bar(ind+2*width, MI_stage[2]/stagesH[2], bar_width, color=colors[1]['color'], edgecolor = "none", label="REM")
+        ax1.bar(ind+width, MI_stage[1]/stagesH[1], bar_width, color=colors[8]['color'], edgecolor = "none", label="N1")
+        ax1.bar(ind+2*width, MI_stage[1] / stagesH[2], bar_width, color=colors[8]['color'], edgecolor="none",
+                label="N2")
+        ax1.bar(ind+3*width, MI_stage[1] / stagesH[3], bar_width, color=colors[8]['color'], edgecolor="none",
+                label="N3")
+        ax1.bar(ind+4*width, MI_stage[2]/stagesH[4], bar_width, color=colors[1]['color'], edgecolor = "none", label="REM")
         ax1.bar(ind+5*width, overAll, bar_width, color='#40e0d0', edgecolor = "none", label="OverAll")
 
         ax1.set_ylabel('M.I. / Stage Entropy', fontweight='bold', fontsize=70)
@@ -1454,9 +1487,9 @@ class StatesAnalysis(object):
         legend_properties = {'weight':'bold', 'size':65}
         plt.legend(frameon=False, borderaxespad=0., prop=legend_properties, bbox_to_anchor=(.77, 1.05), loc=2)
 
-        fname = 'MIstageH.jpeg'
+        fname = 'MIstageH.svg'
         fname = os.path.join(saveDir, fname)
-        fig.savefig(fname, format='jpeg', transparent=True, dpi=100)
+        fig.savefig(fname, format='svg', transparent=True, dpi=100)
         plt.close(fig)
 
     def entropiesHistogram(self, entropies, saveDir):
@@ -1508,9 +1541,9 @@ class StatesAnalysis(object):
         plt.ylabel('Number of Latent States', fontsize=25, fontweight='bold')
         plt.legend()
 
-        fname = 'entropiesHist.png'
+        fname = 'entropiesHist.svg'
         fname = os.path.join(saveDir, fname)
-        plt.savefig(fname, transparent=True, dpi=100)
+        plt.savefig(fname, format='svg')
         plt.close(f1)       
 
     def plotHistogram(self, saveDir, name, yLim):       
@@ -1553,18 +1586,21 @@ class StatesAnalysis(object):
 
         ax1.set_xlim([0, len(self.uniqueStates[self.uniqueStates[:, 1] > self.threshold, 0])-1])        
         ax1.set_xticks(np.linspace(0, len(self.uniqueStates[self.uniqueStates[:, 1] > self.threshold, 0]), num=10, dtype=np.int32), minor=False)
-        ax1.set_xticklabels(ax1.get_xticks(), fontweight='bold', fontsize=17)       
+        ax1.set_xticklabels(ax1.get_xticks(), fontweight='bold', fontsize=17)
 
-        red_patch = mpatches.Patch(color=(0.0, 0.0, 1.0), label='Wakefulness')
-        green_patch = mpatches.Patch(color=(0.0, 1.0, 0.0), label='NREM')
-        blue_patch = mpatches.Patch(color=(1.0, 0.0, 0.0), label='REM')
+        wake_patch = mpatches.Patch(color=(0.0, 0.0, 1.0), label='Wake')
+        n1_patch = mpatches.Patch(color=(0.0, 1.0, 0.0), label='N1')
+        n2_patch = mpatches.Patch(color=(1.0, 0.5, 0.0), label='N2')
+        n3_patch = mpatches.Patch(color=(0.5, 0.0, 0.5), label='N3')
+        rem_patch = mpatches.Patch(color=(1.0, 0.0, 0.0), label='REM')
+
         legend_properties = {'weight':'bold'}
-        legend = plt.legend(handles=[red_patch, green_patch, blue_patch], borderaxespad=0., fontsize=30, prop=legend_properties)
+        legend = plt.legend(handles=[wake_patch, n1_patch, n2_patch, n3_patch, rem_patch], borderaxespad=0., fontsize=30, prop=legend_properties)
         frame = legend.get_frame().set_alpha(0)
 
-        fname = 'coloredHistogram' + name + '.png'      
+        fname = 'coloredHistogram' + name + '.svg'
         fname = os.path.join(saveDir, fname)
-        plt.savefig(fname, transparent=True, dpi=100)       
+        plt.savefig(fname, format='svg')
         plt.close(fig)
 
     def visualizeDistribution(self, d, A, B, labels, saveDir, filename):
@@ -1593,7 +1629,7 @@ class StatesAnalysis(object):
         """
         ax.invert_yaxis()
         ax.xaxis.tick_top()
-
+        print(labels)
         ax.set_xticklabels(labels, minor=False, fontweight='bold', fontsize=20)
         ax.set_yticklabels(labels, minor=False, fontweight='bold', fontsize=20)
 
@@ -1633,7 +1669,7 @@ class StatesAnalysis(object):
             f.text(0.25, .04, "%s" %M2[:7], fontweight='bold', fontsize=20)
             f.text(0.3, .01, "...%s" %M2[7::], fontweight='bold', fontsize=20)
 
-        fname = os.path.join(saveDir, filename)
-        f.savefig(fname, transparent=True, dpi=100)
+        fname = os.path.join(saveDir, "vis_dist.svg")
+        f.savefig(fname, format='svg')
         plt.close(f)
     
