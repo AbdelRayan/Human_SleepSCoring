@@ -55,21 +55,45 @@ def convert_brainvision_ascii(
     Behavior
     --------
     - If ``channel_select`` is None:
-        → ALL channels in the ASCII file are included.
+        → All EEG channels present in the ASCII file are processed.
     - If ``channel_select`` is a list:
-        → ONLY those channels are included.
+        → Only those EEG channels are processed (if present in the file).
 
-    Extra-cranial channels are defined as:
+    EOG and EMG channels are handled independently of ``channel_select``:
+        - EOG1 and EOG2 (unipolar) are always appended if present.
+        - EMG1–EMG2 is always appended as a bipolar channel if both are present.
+
+    Extra-cranial EEG channels are defined as:
         F1–F5, Fz
         C1–C5, Cz
         T1–T5
         O1–O5, Oz
 
-    Extra-cranial channels are bipolarized vs Cz if Cz exists.
-    Non-extra-cranial channels are always unipolar.
-    Cz itself is always unipolar.
+    Extra-cranial channels (except Cz) are bipolarized against Cz if Cz exists.
+    If Cz does not exist, all channels are written unipolarly.
+    Cz itself is always written as a unipolar channel.
 
-    EOG1/EOG2 (unipolar) and EMG1–EMG2 (bipolar) are ALWAYS included.
+    Non-extra-cranial EEG channels are always written unipolarly.
+
+    Downsampling
+    ------------
+    If ``downsample_factor`` > 1, data are downsampled by averaging over
+    non-overlapping blocks. Trailing samples that do not fit an integer number
+    of blocks are discarded. ``None`` or 1 disables downsampling.
+
+    Output details
+    --------------
+    - Output .dat is written as IEEE_FLOAT_32, multiplexed by time.
+    - Channel order is:
+        1. Selected EEG channels (file order or ``channel_select`` order)
+        2. EOG1, EOG2 (if present)
+        3. EMG1-EMG2 (if present)
+    - Bipolar channels are named ``<channel>-Cz`` or ``EMG1-EMG2``.
+
+    Note
+    ----
+    The output .vhdr uses a fixed ``SamplingInterval=4000`` (250 Hz) and does not
+    adjust this value if downsampling is applied.
 
     Parameters
     ----------
@@ -78,10 +102,9 @@ def convert_brainvision_ascii(
     out_dir : str
         Output directory for converted files.
     channel_select : list[str] or None
-        Channels to include. If None, all channels from the file are included.
+        EEG channels to process. EOG and EMG channels are handled separately.
     downsample_factor : int or None
-        If >1, downsample by averaging over non-overlapping blocks.
-        Use None or 1 for no downsampling.
+        Downsampling factor. Use None or 1 for no downsampling.
 
     Returns
     -------
@@ -94,6 +117,7 @@ def convert_brainvision_ascii(
         flags=re.IGNORECASE
     )
 
+    # Helper function that determines whether a channel is extracranial
     def is_extracranial(ch):
         return extracranial_re.match(ch) is not None
 
@@ -159,7 +183,7 @@ def convert_brainvision_ascii(
         data = all_channels[ch]
 
         if is_extracranial(ch) and ch != "Cz" and cz_available:
-            # bipolar
+            # bipolar if extracranial, derived using the Cz channel if its available
             bipolar_data.append(data - all_channels["Cz"])
             bipolar_names.append(f"{ch}-Cz")
         else:
