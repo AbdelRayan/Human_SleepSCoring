@@ -32,13 +32,13 @@ You may score manually using the web interface, or, if you have API access, auto
 ## 3. Generate Feature Files
 
 **Notebook:**  
-`Averaged_features.ipynb`
+`Feature_file_creation.ipynb`
 
 This notebook computes all required features per subject, including:
 
 - Sleep state indices
 - Spectral powers
-- Aperiodic exponent (Specparam)  
+- Aperiodic exponent   
 - Detrended Fluctuation Analysis (DFA)  
 - Multiscale Entropy (MSE)  
 - Additional averaged or per-epoch features  
