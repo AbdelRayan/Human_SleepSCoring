@@ -1,0 +1,6 @@
+Preprocessing details:
+  - Scaling applied (standard).
+
+Final data shape: (289207, 13)
+Final data dtype: float32
+Final data range: [-2.359886, 3.794899]

@@ -1,0 +1,5 @@
+
+Dataset: C:\Users\jalma\OneDrive - HAN\stage_donders\features\relaxed\N1_selection_relaxed_artifact_filtered\standardised\train_standardized.npz
+visData size: (266518, 4)
+visData type: float32
+visData range: [2.5678232 4.095529  2.6757507 3.1386356]
