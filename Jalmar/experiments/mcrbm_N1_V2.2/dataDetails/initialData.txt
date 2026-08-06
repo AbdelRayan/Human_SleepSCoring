@@ -1,0 +1,8 @@
+
+Modeling: C:\Users\jalma\OneDrive - HAN\stage_donders\features\N1_selection_V2\sleep_features_N1_selection_train_stripped.npz
+Dataset size: (289207, 4)
+Dataset dtype: float32
+d_min: [0.0204 0.05   0.0204 0.0204]
+d_max: [1. 1. 1. 1.]
+d_mean: [0.49333745 0.2437981  0.4993388  0.49346563]
+d_std: [0.2780179  0.2639937  0.24751881 0.23629381]

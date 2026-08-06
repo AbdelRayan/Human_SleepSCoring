@@ -1,0 +1,6 @@
+step,feature,reason
+After constant filter,15/15 features,Removed 0 constant features
+Remove redundant,Index_1,MI=0.503 with Index_W
+Remove redundant,Index_4,MI=0.536 with Index_3
+Remove redundant,DFA,MI=0.728 with MSE
+After redundancy filter,12/15 features,Removed 3 redundant features

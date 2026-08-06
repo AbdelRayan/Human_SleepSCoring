@@ -1,0 +1,5 @@
+
+Dataset: C:\Users\jalma\OneDrive - HAN\stage_donders\features\N1_selection_V2\sleep_features_N1_selection_train_stripped_processed.npz
+visData size: (289207, 4)
+visData type: float32
+visData range: [3.5233676 3.5971375 3.9575896 4.1455564]

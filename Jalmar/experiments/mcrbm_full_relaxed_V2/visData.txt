@@ -1,0 +1,7 @@
+
+Dataset: C:\Users\jalma\OneDrive - HAN\stage_donders\features\relaxed\full_selection_relaxed_artifact_filtered\sleep_features_full_selection_relaxed_artifact_filtered_train_stripped.npz
+visData size: (266518, 13)
+visData type: float32
+visData range: [0.69314617 0.69314617 0.69314617 0.69314617 0.69314617 0.69314617
+ 0.69314617 0.69314617 0.69314617 0.69314617 0.69314617 0.69314617
+ 0.69314617]

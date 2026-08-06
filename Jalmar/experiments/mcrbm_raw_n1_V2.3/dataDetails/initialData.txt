@@ -1,0 +1,8 @@
+
+Modeling: C:\Users\jalma\OneDrive - HAN\stage_donders\features\processing_test\raw_N1\split_raw_N1_selection_artifact_filtered\standardized\train_standardized.npz
+Dataset size: (266325, 4)
+Dataset dtype: float32
+d_min: [-1.3193269 -9.384846  -0.9839883 -0.6326647]
+d_max: [ 9.3012495  3.5134835 13.442561   5.0102444]
+d_mean: [-3.3686978e-05  1.6194294e-06  2.6894526e-07 -5.5065768e-05]
+d_std: [1.0000415  0.99998844 0.99995744 1.0007701 ]

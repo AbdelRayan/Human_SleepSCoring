@@ -1,0 +1,7 @@
+
+Dataset: C:\Users\jalma\OneDrive - HAN\stage_donders\features\processing_test\raw_full\split_raw_full_selection\standardized\train_standardized.npz
+visData size: (288973, 13)
+visData type: float32
+visData range: [  9.780281   12.538929   33.71242    51.805023   36.58709   179.02899
+ 250.67967     5.6270294   7.4303784   5.985834   28.985159   13.636732
+   9.794466 ]

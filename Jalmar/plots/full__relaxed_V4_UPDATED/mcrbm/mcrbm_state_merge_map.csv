@@ -1,0 +1,2 @@
+original_state_id,original_count,original_purity,dominant_label_id,dominant_label_name,merged_state_id,merge_reason,hamming_distance_to_target
+0,66630,0.3934263845114813,2,N2,0,stable,0

@@ -1,0 +1,23 @@
+numpy==2.2.6
+scipy==1.15.3
+mne==1.11.0
+h5py==3.16.0
+joblib==1.5.3
+specparam==2.0.0rc6
+neurodsp==2.3.0
+EntropyHub==2.0
+matplotlib==3.10.8
+scikit-learn==1.7.2
+numba==0.64.0
+pillow>=9.0.0
+umap-learn>=0.5.0
+pandas>=2.0.0
+seaborn>=0.13.0
+
+# GPU Support (CUDA 13.1)
+# Uncomment the appropriate line for your system:
+# For CUDA 13.1 (current system):
+cupy-cuda13x>=13.0.0
+# For CUDA 12.x: cupy-cuda12x>=13.0.0
+# For CUDA 11.x: cupy-cuda11x>=13.0.0
+# For CPU-only: skip CuPy installation

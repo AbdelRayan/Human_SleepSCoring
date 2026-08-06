@@ -1,0 +1,7 @@
+
+Dataset: C:\Users\jalma\OneDrive - HAN\stage_donders\features\processing_test\raw_full_R_EOG\split_raw_full_selection_artifact_filtered\normalized\train_standardized.npz
+visData size: (266325, 13)
+visData type: float32
+visData range: [10.620577  12.898329  13.572475  23.043848  26.000906  23.043852
+ 37.5279    43.843784   5.802251   7.5242405  6.041869  14.42655
+  5.642909 ]
